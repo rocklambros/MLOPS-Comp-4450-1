@@ -17,7 +17,7 @@ what would have to change before any wider use.
 - **Trained:** 2026-06-15 on the IMDB 50K Movie Reviews dataset
 - **Maintainer:** Rock Lambros <rock@rockcyber.com>
 - **Repository:** https://github.com/rocklambros/MLOPS-Comp-4450-1 (`assignments/hw1`)
-- **Serialized artifact:** `sentiment_model.pkl`, SHA-256 `b3ba5948ea171da3e9b9d2211d33047b4a15008e76acd53389e238b6e0790329`
+- **Serialized artifact:** `sentiment_model.pkl`, SHA-256 `b3ba5948ea171da3e9b9d2211d33047b4a15008e76acd53389e238b6e0790329`. This hash identifies the committed build only. Retraining is **not bit-reproducible**: each run produces a different artifact hash, and pinning `PYTHONHASHSEED` and the BLAS thread count did not change that. The headline accuracy is stable across runs; the serialized bytes are not. Treat this hash as a fingerprint of the committed file, not a value a rebuild will reproduce.
 - **License:** MIT (model + code)
 
 ## 2. Intended use and out-of-scope use
@@ -131,7 +131,7 @@ drift and subgroup monitoring.
 - **Pretrained backbone:** none (trained from scratch; no external weights)
 - **Vocabulary:** learned from the training corpus (no external lookup table)
 - **Training-data hash (SHA-256):** `dfc447764f82be365fa9c2beef4e8df89d3919e3da95f5088004797d79695aa2`
-- **Model artifact hash (SHA-256):** `b3ba5948ea171da3e9b9d2211d33047b4a15008e76acd53389e238b6e0790329`
+- **Model artifact hash (SHA-256):** `b3ba5948ea171da3e9b9d2211d33047b4a15008e76acd53389e238b6e0790329` (the committed build; not bit-reproducible across rebuilds, see the reproducibility note in Section 1)
 - **Build environment:** Python 3.13.7, macOS (Apple Silicon)
 - **Recommended follow-up:** generate fully hashed dependency pins (`pip install --require-hashes`) for tamper-evident supply-chain integrity.
 
