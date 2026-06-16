@@ -1,19 +1,25 @@
 # Assignments
 
-Seven graded homework assignments for COMP 4450, 10 percent each, 70 percent of the course grade. Each assignment is pushed here as a self-contained subdirectory.
+The graded homework for COMP 4450, 70 percent of the course grade. Each assignment lives in its own self-contained subdirectory.
 
 ## Layout
 
-One directory per assignment, `hw1` through `hw7`. Each starts from the stub `README.md` already in place. Fill the stub in when the assignment releases, then add your code, data references, and run instructions alongside it.
+Folders are named by course **week**, so `hw5` holds the week-5 assignment. The assignment number and the folder number differ because weeks 4 and 6 carry no homework. Each folder holds the released assignment brief (the `weekN_*.md` file) and a stub `README.md` to fill in with the week, topic, partner, objective, and run instructions.
 
-```
-assignments/
-  hw1/   hw2/   hw3/   hw4/   hw5/   hw6/   hw7/
-```
+| Folder | Week | Assignment | Topic | Status |
+|---|---|---|---|---|
+| [`hw1`](hw1/) | 1 | 1 | Streamlit sentiment-analysis app | built |
+| [`hw2`](hw2/) | 2 | 2 | Docker packaging | spec only |
+| [`hw3`](hw3/) | 3 | 3 | FastAPI backend | spec only |
+| [`hw5`](hw5/) | 5 | 4 | AWS compute (EC2, Lambda) | spec only |
+| [`hw7`](hw7/) | 7 | 5 | Model monitoring | spec only |
+| [`hw8`](hw8/) | 8 | 6 | CI/CD and testing | spec only |
+
+The final project moved out of `assignments/` to its own top-level directory: [`../final-project/`](../final-project/).
 
 ## A note on the schedule
 
-The two course documents in [`../coursedocs/`](../coursedocs/) disagree on which weeks carry a homework. The syllabus maps HW1 through HW6 to weeks 1, 2, 3, 5, 7, 8 and skips weeks 4 and 6. The Week 1 course outline instead says no homework lands on weeks 5, 9, and 10. Both agree the total is seven graded assignments plus a final project. The directories stay numbered `hw1` through `hw7` rather than named by week or topic so the conflict does not force a guess. Record the actual week and topic in each stub when the assignment drops.
+The two course documents in [`../coursedocs/`](../coursedocs/) disagree on which weeks carry a homework. The syllabus maps assignments 1 through 6 to weeks 1, 2, 3, 5, 7, 8 and skips weeks 4 and 6. The Week 1 course outline instead says no homework lands on weeks 5, 9, and 10. Both agree the total is seven graded assignments plus a final project. The folders follow the syllabus week mapping; confirm the week and topic against the brief in each folder when an assignment releases.
 
 ## Working in pairs
 
