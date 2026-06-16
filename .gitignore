@@ -264,3 +264,7 @@ wandb/
 .vscode/
 .idea/
 .DS_Store
+
+# A1 deliverable: the assignment requires the trained model committed to the repo,
+# so re-include this one file despite the *.pkl rule above.
+!assignments/hw1/sentiment_model.pkl

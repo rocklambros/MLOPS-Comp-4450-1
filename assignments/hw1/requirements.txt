@@ -1,0 +1,5 @@
+# Assignment 1 - pinned for reproducibility (QC.1). Verified on Python 3.13.
+pandas==3.0.3
+scikit-learn==1.9.0
+streamlit==1.58.0
+joblib==1.5.3
