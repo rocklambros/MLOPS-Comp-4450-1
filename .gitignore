@@ -252,6 +252,13 @@ data/
 *.parquet
 *.feather
 *.npy
+
+# Committed reference data the apps ship with. imdb_sample.csv is the small balanced
+# fallback. hw7's monitoring service also ships the full IMDB Dataset.csv as its
+# data-drift reference (explicit decision, see COURSE_STATE.md), so track that one copy
+# despite the *.csv rule. The dataset stays ignored everywhere else.
+!assignments/hw7/monitoring/imdb_sample.csv
+!assignments/hw7/monitoring/IMDB Dataset.csv
 *.npz
 
 # MLOps tooling
@@ -272,3 +279,7 @@ wandb/
 # A2 deliverable: the hw2 model copy and the model.pkl spec-tree alias (a symlink).
 !assignments/hw2/sentiment_model.pkl
 !assignments/hw2/model.pkl
+
+# A5 deliverable (hw7): the API container needs the model committed so it builds from
+# a fresh clone, so re-include it despite the *.pkl rule above.
+!assignments/hw7/api/sentiment_model.pkl

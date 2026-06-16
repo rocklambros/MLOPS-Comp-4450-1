@@ -1,0 +1,12 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.md
+.gitignore
+.dockerignore
+.env
+logs/
+# The full dataset never goes in the image; the API does not need it.
+IMDB Dataset.csv

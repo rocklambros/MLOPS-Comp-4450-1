@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Environment files
+.env
+*.env
+
+# Runtime prediction logs live in the shared Docker volume, never committed. Local
+# dev that points LOG_PATH at ./logs lands here too.
+logs/
+prediction_logs.json
+
+# Note: monitoring/IMDB Dataset.csv IS tracked (it ships in the image as the drift
+# reference, re-included in the repo-root .gitignore). The root *.csv rule keeps any
+# other stray dataset copy out.
