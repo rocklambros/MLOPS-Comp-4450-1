@@ -1,0 +1,2 @@
+# Dev/test dependency, kept out of the runtime image (see .dockerignore).
+pytest==9.1.0

@@ -1,0 +1,13 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+tests/
+model.pkl
+*.md
+.gitignore
+.dockerignore
+Makefile
+requirements-dev.txt
+.env

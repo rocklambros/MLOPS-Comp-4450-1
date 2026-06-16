@@ -268,3 +268,7 @@ wandb/
 # A1 deliverable: the assignment requires the trained model committed to the repo,
 # so re-include this one file despite the *.pkl rule above.
 !assignments/hw1/sentiment_model.pkl
+
+# A2 deliverable: the hw2 model copy and the model.pkl spec-tree alias (a symlink).
+!assignments/hw2/sentiment_model.pkl
+!assignments/hw2/model.pkl
