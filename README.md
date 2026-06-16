@@ -46,6 +46,8 @@ source .venv/bin/activate
 
 Each assignment pins its own dependencies in a `requirements.txt` inside its directory. Install those when you start the assignment, not globally.
 
+The containerized assignments build on `python:3.13-slim`. See [COURSE_STATE.md](COURSE_STATE.md) for the stack-baseline rationale.
+
 ## A typical assignment
 
 Modules release the day of class, and assignments are due end of day the following Tuesday. A normal pass through one assignment:
