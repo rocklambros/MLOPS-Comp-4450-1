@@ -18,10 +18,12 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Dashboard, the full IMDB dataset (the data-drift and target-drift reference), and the
-# small fallback sample, owned by the non-root user. The exec-form COPY handles the
-# space in the dataset filename. The sample serves only if the dataset is ever absent.
-COPY --chown=appuser:appuser ["dashboard.py", "imdb_sample.csv", "IMDB Dataset.csv", "./"]
+# Dashboard, its reference-stats module, the precomputed reference distribution (the
+# 11 KB data-drift and target-drift reference, provably identical to the raw 50k-row
+# CSV for the length multiset and sentiment mix), and the small CSV fallback, all owned
+# by the non-root user. The sample serves only if the precomputed artifact is absent.
+COPY --chown=appuser:appuser \
+     ["dashboard.py", "reference_stats.py", "reference_stats.json", "imdb_sample.csv", "./"]
 
 USER appuser
 

@@ -25,14 +25,11 @@ import pandas as pd
 import requests
 import streamlit as st
 
+import reference_stats
+from reference_stats import resolve_reference_path, text_length
+
 HERE = Path(__file__).resolve().parent
 LOG_PATH = Path(os.getenv("LOG_PATH", "/logs/prediction_logs.json"))
-
-# Reference distribution source: env override, then the full IMDB dataset if a copy
-# is present (local dev), then the committed 200-row balanced sample so the dashboard
-# works from a fresh clone and inside the container. Mirrors hw3's /example resolution.
-FULL_DATASET_PATH = HERE / "IMDB Dataset.csv"
-SAMPLE_PATH = HERE / "imdb_sample.csv"
 
 # The API is reachable by service name on the shared Docker network.
 API_URL = os.getenv("API_URL", "http://api:8000")
@@ -43,33 +40,15 @@ SENTIMENTS = ["negative", "positive"]
 LOG_COLUMNS = ["timestamp", "request_text", "predicted_sentiment", "true_sentiment"]
 
 
-def text_length(text: str) -> int:
-    """Length feature for drift: word count. Simple, robust, and unit-labeled."""
-    return len(str(text).split())
-
-
-def resolve_reference_path() -> Path | None:
-    """Pick the reference CSV: env override, full dataset, then committed sample."""
-    override = os.getenv("REFERENCE_DATA_PATH")
-    if override:
-        path = Path(override)
-        return path if path.exists() else None
-    if FULL_DATASET_PATH.exists():
-        return FULL_DATASET_PATH
-    if SAMPLE_PATH.exists():
-        return SAMPLE_PATH
-    return None
-
-
 @st.cache_data
 def load_reference(path_str: str) -> pd.DataFrame:
-    """Load the IMDB reference CSV (review, sentiment) and add a length column.
+    """Cached load of the reference distribution (precomputed JSON or raw CSV).
 
-    Cached on the path so the (possibly 50k-row) file is read once per session.
+    Cached on the path so the source is read and reconstructed once per session.
+    Source resolution and the JSON/CSV dispatch live in reference_stats; both paths
+    return the length and sentiment columns the charts below consume.
     """
-    frame = pd.read_csv(path_str).dropna(subset=["review", "sentiment"])
-    frame["length"] = frame["review"].map(text_length)
-    return frame
+    return reference_stats.load_reference(path_str)
 
 
 def load_logs(path: Path) -> pd.DataFrame:
@@ -131,9 +110,11 @@ if st.button("Refresh"):
     st.cache_data.clear()
     st.rerun()
 
-reference_path = resolve_reference_path()
+reference_path = resolve_reference_path(HERE)
 if reference_path is None:
-    st.error("No reference dataset found. Expected imdb_sample.csv next to this app.")
+    st.error(
+        "No reference distribution found. Expected reference_stats.json next to this app."
+    )
     st.stop()
 reference = load_reference(str(reference_path))
 

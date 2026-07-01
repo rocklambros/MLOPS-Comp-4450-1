@@ -15,11 +15,18 @@ consistent with the earlier ones.
 
 ## Service conventions
 
-- **hw7 monitoring reference data.** hw7 (week 7) deviates from the earlier weeks' rule
-  that the full IMDB dataset stays gitignored and out of the image. The Streamlit
-  monitoring dashboard ships the full `IMDB Dataset.csv` (50k rows, 63 MB) committed under
-  `assignments/hw7/monitoring/` and copied into its image, so the data-drift and
-  target-drift charts compare against the real training distribution from a fresh clone
-  with no setup. Decision made explicitly on 2026-06-16 with the 63 MB git-history cost
-  accepted. `imdb_sample.csv` stays as the fallback. The root `.gitignore` re-includes
-  this one dataset copy through a negation, and every other dataset copy stays ignored.
+- **hw7 monitoring reference data.** The Streamlit monitoring dashboard compares live
+  traffic against a *reference distribution*: the review-length histogram (data drift) and
+  the sentiment class mix (target drift). Both are aggregates. The dashboard ships
+  `reference_stats.json` (11 KB), a precomputed length-count and sentiment-count map built
+  from the full 50k-row IMDB set by `reference_stats.py`. It is proven identical to reading
+  the raw CSV for every signal the charts consume (row count, mean length, 99th-percentile
+  clip, class mix, and the full length multiset), so no chart moves. `imdb_sample.csv` stays
+  as the CSV fallback. Regenerate the artifact when the reference data changes:
+  `python reference_stats.py "IMDB Dataset.csv" reference_stats.json`.
+
+  This reverses the 2026-06-16 decision to commit the full 63 MB `IMDB Dataset.csv`. That
+  copy shipped a permanent blob in git history to carry two aggregates, 300x more data than
+  the charts read. On 2026-06-30 the CSV was replaced by the precomputed artifact and purged
+  from the `feat/hw7-monitoring` history through a single-commit rewrite and force-push, so a
+  fresh clone of the branch no longer pulls the 63 MB blob.

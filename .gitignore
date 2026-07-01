@@ -254,11 +254,11 @@ data/
 *.npy
 
 # Committed reference data the apps ship with. imdb_sample.csv is the small balanced
-# fallback. hw7's monitoring service also ships the full IMDB Dataset.csv as its
-# data-drift reference (explicit decision, see COURSE_STATE.md), so track that one copy
-# despite the *.csv rule. The dataset stays ignored everywhere else.
+# CSV fallback. The full 63 MB IMDB Dataset.csv is NOT tracked: hw7's monitoring service
+# ships reference_stats.json (11 KB), a precomputed length/sentiment distribution proven
+# identical to the full set for the drift charts (see COURSE_STATE.md and reference_stats.py).
+# Every full dataset copy stays ignored.
 !assignments/hw7/monitoring/imdb_sample.csv
-!assignments/hw7/monitoring/IMDB Dataset.csv
 *.npz
 
 # MLOps tooling

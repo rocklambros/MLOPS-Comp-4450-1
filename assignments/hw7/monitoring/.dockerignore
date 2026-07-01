@@ -3,6 +3,11 @@ venv/
 __pycache__/
 *.pyc
 .pytest_cache/
+tests/
+conftest.py
+# The 63 MB raw dataset is not shipped: reference_stats.json carries the same
+# distribution in 11 KB. Keep it out of the build context so builds stay fast.
+IMDB Dataset.csv
 *.md
 .gitignore
 .dockerignore
