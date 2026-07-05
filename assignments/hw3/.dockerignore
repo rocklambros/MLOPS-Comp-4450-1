@@ -1,0 +1,15 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+tests/
+*.md
+.gitignore
+.dockerignore
+Makefile
+requirements-dev.txt
+make_examples.py
+.env
+# The full dataset never goes in the image; /example uses the committed examples.csv.
+IMDB Dataset.csv

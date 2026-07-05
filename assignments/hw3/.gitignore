@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Environment files
+.env
+*.env
+
+# The full IMDB dataset is large and gitignored; the committed examples.csv sample
+# (re-included in the repo-root .gitignore) is what ships. Keep the full file out.
+IMDB Dataset.csv
