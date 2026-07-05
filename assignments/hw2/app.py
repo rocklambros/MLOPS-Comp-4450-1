@@ -9,7 +9,7 @@ Run locally with:
 
     streamlit run app.py
 
-Requires sentiment_model.pkl (produced by train_model.py) in the same directory.
+Requires model.pkl (the trained sentiment Pipeline) in the same directory.
 """
 
 from pathlib import Path
@@ -18,7 +18,7 @@ import joblib
 import streamlit as st
 
 HERE = Path(__file__).resolve().parent
-MODEL_PATH = HERE / "sentiment_model.pkl"
+MODEL_PATH = HERE / "model.pkl"
 
 
 # Cache the model so it loads once and is reused across Streamlit reruns (every widget
@@ -45,8 +45,8 @@ st.write(
 model = load_model()
 if model is None:
     st.error(
-        "Model file 'sentiment_model.pkl' not found. "
-        "Run `python train_model.py` first to generate it."
+        "Model file 'model.pkl' not found. "
+        "It ships with the container; if running locally, place the trained model here."
     )
     st.stop()
 
@@ -57,20 +57,29 @@ if st.button("Analyze"):
     if not text:
         st.warning("Please enter a review before analyzing.")
     else:
-        sentiment = model.predict([text])[0]
         # predict_proba returns probabilities in model.classes_ order (alphabetical:
         # ['negative', 'positive']), not a fixed positive-then-negative order. Pair each
         # class with its probability and look the predicted label up by name, so the
         # confidence stays correct even if the class ordering ever changes.
-        confidence = dict(zip(model.classes_, model.predict_proba([text])[0]))[sentiment]
+        probs = dict(zip(model.classes_, model.predict_proba([text])[0]))
+        sentiment = model.predict([text])[0]
+        confidence = probs[sentiment]
 
-        if sentiment == "positive":
+        # Input that tokenizes to nothing the model has seen (punctuation or unknown
+        # words only) yields a 0.5/0.5 tie, which argmax would report as a confident
+        # "negative". Treat a near-tie as "no signal" rather than a decisive verdict.
+        if abs(probs["positive"] - probs["negative"]) < 0.02:
+            st.warning(
+                "Not enough recognizable words to judge sentiment. "
+                "Try a longer review with clearer wording."
+            )
+        elif sentiment == "positive":
             st.subheader("Predicted Sentiment: Positive \U0001F44D")
             st.success(f"Confidence: {confidence:.1%}")
+            st.progress(float(confidence))
         else:
             st.subheader("Predicted Sentiment: Negative \U0001F44E")
             st.error(f"Confidence: {confidence:.1%}")
-
-        st.progress(float(confidence))
+            st.progress(float(confidence))
 
 st.caption("COMP 4450 - Assignment 1 - TF-IDF + Naive Bayes baseline")

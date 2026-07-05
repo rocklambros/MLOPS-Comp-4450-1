@@ -10,12 +10,16 @@ build:
 run:
 	docker run --rm -p $(PORT):8501 $(IMAGE)
 
+# Delete the image. Force-remove any container still running from it first, so the
+# rmi does not silently fail on an in-use image (the leading - keeps clean idempotent
+# when the container or image is already gone).
 clean:
+	-docker rm -f $$(docker ps -aq --filter ancestor=$(IMAGE)) 2>/dev/null
 	-docker rmi $(IMAGE)
 
 # Unit check: model prediction path. Install dev deps first: pip install -r requirements-dev.txt
 test:
-	python -m pytest tests/ -q
+	python3 -m pytest tests/ -q
 
 # Integration check: the container actually serves Streamlit's health endpoint.
 smoke: build
