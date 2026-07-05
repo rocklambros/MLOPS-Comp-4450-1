@@ -1,21 +1,31 @@
-# Sentiment Analysis FastAPI Backend
+# Assignment 3: FastAPI Sentiment Backend
 
-A FastAPI REST service that wraps a trained IMDB movie-review sentiment model
-(TF-IDF + Multinomial Naive Bayes, bundled as `sentiment_model.pkl`), validates requests
-with Pydantic, and ships as a Docker container. Four endpoints serve health, prediction,
-prediction-with-confidence, and a sample review for testing.
+A FastAPI REST service that serves a trained movie-review sentiment model over four
+endpoints, validates every request with Pydantic, and ships as a Docker container. This
+folder is self-contained: the trained model and a sample of reviews are committed, so it
+builds and runs from a fresh clone with no other assignment present.
 
-- Course: COMP 4450 MLOps, Assignment 3
-- Topic: FastAPI backend for model serving
-- Due: per the course schedule on Canvas
+## Where this sits in the course
 
-## Objective
+This is the third step in one continuous project, and it reuses the earlier work rather
+than starting over.
 
-Serve the trained sentiment model over a FastAPI application exposing four endpoints,
-validate request bodies with Pydantic, then containerize the service with Docker and
-push it to a GitHub repository.
+| Assignment | Deliverable | Serving interface |
+|---|---|---|
+| 1 | Train the sentiment model (`sentiment_model.pkl`) and build a Streamlit app | Streamlit UI |
+| 2 | Containerize the Streamlit app with Docker | Streamlit UI in a container |
+| 3 (this one) | Serve the **same** model as a REST API and containerize it | FastAPI backend |
 
-## API
+The model here is byte-for-byte the one trained in Assignment 1 (a scikit-learn Pipeline
+of `TfidfVectorizer` + `MultinomialNB`). Assignment 2 wrapped that model in a Streamlit
+UI on port 8501. Assignment 3 wraps the identical model in a FastAPI API on port 8000, so
+the two serving interfaces run side by side without colliding. The Docker approach,
+Makefile, dependency pinning, non-root user, healthcheck, and Python base image all follow
+the conventions established in Assignment 2.
+
+## What it does
+
+Four endpoints, each returning the exact JSON shape the spec asks for.
 
 | Method | Path | Request body | Response |
 |---|---|---|---|
@@ -24,107 +34,119 @@ push it to a GitHub repository.
 | POST | `/predict_proba` | `{"text": "..."}` | `{"sentiment": "positive", "probability": 0.95}` |
 | GET | `/example` | none | `{"review": "..."}` |
 
-Interactive docs are auto-generated at `/docs` (Swagger UI) and `/redoc` once the server
-is running.
+Interactive API docs generate automatically at `/docs` (Swagger UI) and `/redoc` once the
+server is running.
 
-## Files
+## Grade it in three commands (Docker)
 
-- `main.py` - the FastAPI app and the four endpoints
-- `requirements.txt` - pinned runtime dependencies (reproducible build)
-- `requirements-dev.txt` - test and lint tools, kept out of the image
-- `sentiment_model.pkl` - the trained sentiment pipeline the API serves
-- `examples.csv` - 200 real IMDB reviews (100 positive, 100 negative) that back `/example`
-- `make_examples.py` - regenerates `examples.csv` deterministically from the full dataset
-- `Dockerfile`, `.dockerignore` - container build
-- `Makefile` - `build`, `run`, `clean`, plus `test` and `smoke`
-- `tests/test_api.py` - endpoint and validation checks (verification aid, beyond the spec)
-
-## Run it locally
+The container is the intended way to run and grade this. From inside `assignments/hw3`:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn main:app --reload          # serves on http://127.0.0.1:8000
+make build                 # docker build -t sentiment-api .
+make run                   # docker run --rm -p 8000:8000 sentiment-api
+curl http://localhost:8000/health
+# {"status":"ok"}
 ```
 
-Call the endpoints with curl (or import them into Postman):
+The build needs no downloads: the model (`sentiment_model.pkl`) and the review sample
+(`examples.csv`) are committed and copied into the image. A healthcheck is baked in, so
+`docker ps` reports the container as `healthy` once it is serving. Stop the container with
+Ctrl-C, and remove the image with `make clean`.
+
+## Exercise every endpoint
+
+With the container running (or `uvicorn main:app` locally), each endpoint responds as
+below. The `/predict_proba` value is deterministic, so the number reproduces exactly.
 
 ```bash
-curl http://127.0.0.1:8000/health
-# {"status":"ok"}
-
-curl -X POST http://127.0.0.1:8000/predict \
+curl -X POST http://localhost:8000/predict \
   -H 'Content-Type: application/json' \
   -d '{"text": "This movie was a masterpiece!"}'
 # {"sentiment":"positive"}
 
-curl -X POST http://127.0.0.1:8000/predict_proba \
+curl -X POST http://localhost:8000/predict_proba \
   -H 'Content-Type: application/json' \
   -d '{"text": "One of the best films I have seen in years. Every scene earns its place, the pacing never drags, and the lead performance is unforgettable."}'
 # {"sentiment":"positive","probability":0.7697}
 
-curl http://127.0.0.1:8000/example
-# {"review":"..."}
+curl http://localhost:8000/example
+# {"review":"..."}   a random review from the sample data
 ```
 
-A request with no `text` field, with blank or whitespace text, with any field beyond
-`text`, or with text longer than 20,000 characters returns HTTP 422. Pydantic rejects the
-body before it reaches the model.
+Pydantic rejects a bad body with HTTP 422 before it reaches the model. A request with no
+`text` field, with blank or whitespace text, with any field other than `text`, or with
+text longer than 20,000 characters returns 422.
 
-Confidence tracks how much text the model sees: a short phrase reads lower, a full review
-reads higher. `/predict_proba` reports the model's calibrated probability for the
-predicted class, not a hard 0 or 1, so a moderate number on a short input is expected.
+## Run the tests
 
-## Run it in Docker
-
-```bash
-make build        # docker build -t sentiment-api .
-make run          # docker run --rm -p 8000:8000 sentiment-api
-```
-
-The API is then reachable on `http://localhost:8000` exactly as above. Stop with Ctrl-C,
-remove the image with `make clean`. Raw Docker equivalents:
+The tests are not required by the spec. They check all four endpoints, the 422 validation
+paths, and the degraded-mode fallbacks, so the API can be verified without a running
+server.
 
 ```bash
-docker build -t sentiment-api .
-docker run --rm -p 8000:8000 sentiment-api
-```
-
-## Tests
-
-```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements-dev.txt
-make test         # pytest: the four endpoints, the 422 validation paths, degraded modes
-make smoke        # builds, runs the container, confirms it serves /health
-ruff check main.py tests/   # lint, zero errors
+make test                  # pytest, 11 checks, in-process via TestClient
+make smoke                 # builds the image, runs it, confirms /health
+ruff check main.py tests/  # lint, zero errors
 ```
 
-## Notes
+To run the API directly instead of in Docker:
 
-- **Base image.** Built on `python:3.13-slim`, not the `python:3.9-slim` example in the
-  spec. The pinned scikit-learn stack requires Python 3.10+, and the model was serialized
-  under Python 3.13, so a 3.9 image cannot install the dependencies or load the model.
-  This is the one deliberate deviation from the spec.
-- **Port 8000.** FastAPI serves on 8000, fixed and consistent across the Dockerfile
-  `EXPOSE`, the `docker run` port mapping, and the Makefile.
+```bash
+pip install -r requirements.txt
+uvicorn main:app --reload  # serves on http://127.0.0.1:8000
+```
+
+## Rubric coverage
+
+Every requirement in the spec, and where to check it.
+
+| Spec requirement | Where it lives | How to verify |
+|---|---|---|
+| `main.py` serves the model | `main.py` | `make run`, then curl the endpoints |
+| `GET /health` returns `{"status":"ok"}` | `main.py` `health()` | `curl /health` |
+| `POST /predict` returns `{"sentiment":...}` | `main.py` `predict()` | curl example above |
+| `POST /predict_proba` returns sentiment + probability | `main.py` `predict_proba()` | curl example above |
+| `GET /example` returns a random review | `main.py` `example()` | `curl /example` |
+| Pydantic request validation | `main.py` `ReviewRequest` | send a bad body, get 422 |
+| Containerize with Docker | `Dockerfile`, `.dockerignore` | `make build` |
+| Documentation | this `README.md` | you are reading it |
+| Push to a GitHub repository | committed and pushed | the repository URL for this submission |
+
+## Files
+
+- `main.py` - the FastAPI app and the four endpoints
+- `sentiment_model.pkl` - the trained sentiment pipeline the API serves
+- `examples.csv` - 200 real IMDB reviews (100 positive, 100 negative) backing `/example`
+- `make_examples.py` - regenerates `examples.csv` deterministically from the full dataset
+- `requirements.txt` - pinned runtime dependencies (reproducible build)
+- `requirements-dev.txt` - test and lint tools, kept out of the image
+- `Dockerfile`, `.dockerignore` - container build
+- `Makefile` - `build`, `run`, `clean`, `test`, `smoke`
+- `tests/test_api.py` - endpoint, validation, and degraded-mode checks
+
+## Design notes
+
+- **Python base image.** Built on `python:3.13-slim`, the same base used in Assignment 2.
+  The spec lists `python:3.9-slim` as an example, but the pinned scikit-learn stack needs
+  Python 3.10 or newer and the model was serialized under 3.13, so a 3.9 image cannot
+  install the dependencies or load the model.
+- **Port 8000.** Fixed and consistent across the Dockerfile `EXPOSE`, the `docker run`
+  mapping, and the Makefile. Assignment 2's Streamlit app stays on 8501, so both run at once.
 - **`/example` data source.** The endpoint prefers the full `IMDB Dataset.csv` when it is
-  present next to `main.py` (set `EXAMPLE_DATA_PATH` to point elsewhere), and otherwise
-  falls back to the committed `examples.csv`. The full dataset (~63 MB) is gitignored and
-  is not baked into the image, so inside the container and from a fresh clone the sample
-  is what serves. `examples.csv` is 200 real IMDB reviews, balanced 100 positive / 100
-  negative; `make_examples.py` regenerates it deterministically (fixed seed 4450) from the
-  full dataset, so the sample is reproducible rather than an opaque blob.
-- **Degraded modes.** A missing or unreadable model, or a misconfigured `EXAMPLE_DATA_PATH`,
-  does not crash the process: `/health` stays up and the affected endpoint answers 503, so
-  a configuration problem is explicit to the caller instead of a dead server.
-- **Sync endpoints on purpose.** Model inference is CPU-bound and fast, so the path
-  operations are plain `def`, which FastAPI runs in a worker thread off the event loop.
-  No `async` is needed here.
+  present next to `main.py` (point `EXAMPLE_DATA_PATH` elsewhere to override), and otherwise
+  falls back to the committed `examples.csv`. The full dataset (about 63 MB) is gitignored
+  and never enters the image, so the sample serves inside the container and from a fresh
+  clone. `make_examples.py` regenerates that sample deterministically (fixed seed 4450), so
+  it is reproducible rather than an opaque file.
+- **Degraded modes, not crashes.** A missing or unreadable model, or a misconfigured
+  `EXAMPLE_DATA_PATH`, does not take the process down. `/health` stays up and the affected
+  endpoint answers 503, so a configuration problem is explicit to the caller.
 
-## Repository and submission
+## Assignment metadata
 
-This folder is self-contained: clone the repository, `cd` into it, and build and run as
-shown above. Everything the container needs (`main.py`, `sentiment_model.pkl`,
-`examples.csv`, `requirements.txt`, `Dockerfile`) is committed, so `make build` works from
-a fresh clone with no extra downloads.
+- Course: COMP 4450 MLOps, Assignment 3
+- Points: 10
+- Due: July 14, 2026, 11:59 PM (per the assignment spec header)
