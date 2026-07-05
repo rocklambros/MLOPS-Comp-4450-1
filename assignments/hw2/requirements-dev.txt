@@ -1,2 +1,6 @@
-# Dev/test dependency, kept out of the runtime image (see .dockerignore).
+# Dev/test dependencies. Pulls in the runtime set (-r requirements.txt) so that a
+# single `pip install -r requirements-dev.txt` gives `make test` everything it needs
+# to load and exercise the model (joblib, scikit-learn, numpy, scipy). Kept out of
+# the runtime image via .dockerignore.
+-r requirements.txt
 pytest==9.1.0

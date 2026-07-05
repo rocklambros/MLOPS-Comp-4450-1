@@ -10,7 +10,7 @@ from pathlib import Path
 import joblib
 import pytest
 
-MODEL_PATH = Path(__file__).resolve().parent.parent / "sentiment_model.pkl"
+MODEL_PATH = Path(__file__).resolve().parent.parent / "model.pkl"
 
 
 @pytest.fixture(scope="module")

@@ -42,4 +42,9 @@ toml==0.10.2
 typing_extensions==4.15.0
 urllib3==2.7.0
 uvicorn==0.49.0
+# watchdog is a streamlit dependency only on non-macOS (its metadata marks it
+# platform_system != "Darwin"). A macOS pip freeze omits it, so it is pinned
+# explicitly here to keep the Linux container build reproducible rather than
+# resolved to whatever version exists at build time.
+watchdog==6.0.0
 websockets==16.0

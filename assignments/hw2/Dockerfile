@@ -15,15 +15,26 @@ RUN useradd --create-home --uid 1000 appuser \
 WORKDIR /app
 
 # Requirements first so the dependency layer caches across app changes.
+# --root-user-action=ignore silences pip's root warning (installing system-wide as root
+# then running as appuser is the intended container pattern); --disable-pip-version-check
+# drops the upgrade notice, keeping the build output clean.
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --root-user-action=ignore --disable-pip-version-check \
+    -r requirements.txt
 
-# App and model, owned by the non-root user.
-COPY --chown=appuser:appuser app.py sentiment_model.pkl ./
+# App and model, owned by the non-root user. model.pkl is the filename the
+# Assignment 2 spec tree names, and the one app.py loads.
+COPY --chown=appuser:appuser app.py model.pkl ./
 
 USER appuser
 
 EXPOSE 8501
+
+# Liveness probe: Streamlit serves /_stcore/health. Baking it in surfaces container
+# health in `docker ps` and lets an orchestrator restart a hung-but-running process.
+# Uses stdlib urllib (slim has no curl) and the container's own port.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8501/_stcore/health').status == 200 else 1)"
 
 # Bind to 0.0.0.0 so the published port is reachable from the host; headless and
 # stats-off stop the container from prompting or writing telemetry.
