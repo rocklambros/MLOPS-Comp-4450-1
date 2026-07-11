@@ -10,7 +10,7 @@ Multinomial Naive Bayes, bundled as sentiment_model.pkl) in four REST endpoints:
     GET  /health         liveness check
     POST /predict        text -> {"sentiment": ...}
     POST /predict_proba  text -> {"sentiment": ..., "probability": ...}
-    GET  /example        a random review from the sample data
+    GET  /example        a random review from the full IMDB dataset
 
 Run locally with:
 
@@ -23,6 +23,7 @@ import csv
 import logging
 import os
 import random
+import re
 from pathlib import Path
 
 import joblib
@@ -30,6 +31,11 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 logger = logging.getLogger("sentiment_api")
+
+# /example returns raw dataset reviews, which carry literal <br /> HTML line breaks.
+# Strip them to spaces so the endpoint returns readable text. The model never sees
+# /example output, so this display cleanup has no effect on predictions.
+_BR_TAG = re.compile(r"<br\s*/?>", re.IGNORECASE)
 
 # Cap request text length. TfidfVectorizer.transform cost scales with input size, and
 # the request body is buffered in full before it reaches the model, so an unbounded
@@ -40,14 +46,11 @@ MAX_TEXT_LENGTH = 20_000
 HERE = Path(__file__).resolve().parent
 MODEL_PATH = HERE / "sentiment_model.pkl"
 
-# /example data source, resolved at startup. Prefer the full IMDB dataset when it is
-# present (local dev, or a grader who dropped it next to the app), then fall back to the
-# committed sample so the endpoint still works from a fresh clone and inside the
-# container, where the large dataset is gitignored and never shipped. An explicit
-# EXAMPLE_DATA_PATH env var wins over both, keeping the path configurable without a code
-# change. Config in the environment, not hardcoded.
+# /example data source, resolved at startup. The full IMDB dataset is committed next to
+# main.py and is /example's only source. An explicit EXAMPLE_DATA_PATH env var wins over
+# it, keeping the path configurable without a code change. Config in the environment,
+# not hardcoded.
 FULL_DATASET_PATH = HERE / "IMDB Dataset.csv"
-SAMPLE_PATH = HERE / "examples.csv"
 
 
 def load_model():
@@ -68,15 +71,13 @@ def load_model():
 
 
 def resolve_example_source() -> Path | None:
-    """Pick the CSV that /example draws from: env override, full dataset, then sample."""
+    """Pick the CSV that /example draws from: env override, then the full dataset."""
     override = os.getenv("EXAMPLE_DATA_PATH")
     if override:
         path = Path(override)
         return path if path.exists() else None
     if FULL_DATASET_PATH.exists():
         return FULL_DATASET_PATH
-    if SAMPLE_PATH.exists():
-        return SAMPLE_PATH
     return None
 
 
@@ -86,6 +87,7 @@ def load_reviews(path: Path) -> list[str]:
     csv.DictReader handles the quoted fields in IMDB reviews (embedded commas, quotes,
     and newlines) correctly, so no extra parsing is needed.
     """
+    csv.field_size_limit(10 * 1024 * 1024)
     with path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         if reader.fieldnames is None or "review" not in reader.fieldnames:
@@ -199,10 +201,11 @@ def predict_proba(request: ReviewRequest) -> PredictProbaResponse:
 
 @app.get("/example", response_model=ExampleResponse)
 def example() -> ExampleResponse:
-    """Return a random review from the sample data, handy for testing the predictors."""
+    """Return a random review from the IMDB dataset, HTML-stripped, for testing the predictors."""
     if not EXAMPLE_REVIEWS:
         raise HTTPException(status_code=503, detail="no example reviews available")
-    return ExampleResponse(review=random.choice(EXAMPLE_REVIEWS))
+    review = _BR_TAG.sub(" ", random.choice(EXAMPLE_REVIEWS)).strip()
+    return ExampleResponse(review=review)
 
 
 if __name__ == "__main__":

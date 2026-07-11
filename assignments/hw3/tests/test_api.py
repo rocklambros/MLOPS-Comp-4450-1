@@ -77,6 +77,19 @@ def test_example_returns_a_review():
     assert isinstance(review, str) and review
 
 
+def test_example_review_has_no_br_tags():
+    # /example must serve a clean review; <br> markup is stripped to spaces.
+    for _ in range(25):  # sample several random draws
+        review = client.get("/example").json()["review"]
+        assert "<br" not in review
+        assert review == review.strip()
+
+
+def test_example_loads_from_full_dataset():
+    # After the switch, the loaded corpus is the full dataset, not a 200-row sample.
+    assert len(main.EXAMPLE_REVIEWS) > 1000
+
+
 def test_bad_example_source_degrades_instead_of_crashing(tmp_path, monkeypatch):
     # A misconfigured EXAMPLE_DATA_PATH must degrade to an empty list, not raise, so the
     # rest of the API stays up and only /example answers 503.
