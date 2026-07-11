@@ -45,3 +45,35 @@ Tip: Use Pydantic models to define the structure of your request bodies for robu
 ## Part 2: Packaging and Documentation
 
 Once your FastAPI application is working locally, you will package it for distribution.
+
+Project Structure: Your final repository should have the following structure:
+
+.
+├── .gitignore
+├── Dockerfile
+├── Makefile
+├── README.md
+├── main.py
+├── requirements.txt
+├── sentiment_model.pkl
+└── IMDB Dataset.csv
+ 
+
+The README.md should include the following details:
+
+A description of the API and its endpoints.
+
+Instructions on how to build and run the project locally using your Makefile.
+
+A link to the auto-generated FastAPI documentation, which will be available at /docs once the server is running.
+
+To work with Docker for this assignment, you can read the first few sections (until the section Check It) of this page from FastAPI's documentation: https://fastapi.tiangolo.com/deployment/dockerLinks to an external site.
+
+Make sure that your APIs are running correctly by downloading Postman Desktop locally and testing with it. This is how I am going to grade your assignment as well.
+
+Part 3: Submission
+Must be self contained (Do not reference other areas of this project from previous assignments such as hw1 or hw2)
+
+Commit all your project files and push them to your GitHub repository.
+
+Submit the URL to your public GitHub repository on this canvas page.
