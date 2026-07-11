@@ -21,6 +21,7 @@ or inside the container on port 8000 (see the Dockerfile and Makefile).
 
 import csv
 import logging
+import math
 import os
 import random
 import re
@@ -28,6 +29,9 @@ from pathlib import Path
 
 import joblib
 from fastapi import FastAPI, HTTPException
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 logger = logging.getLogger("sentiment_api")
@@ -166,6 +170,35 @@ app = FastAPI(
     ),
     version="1.0.0",
 )
+
+
+def _json_safe(value):
+    """Recursively coerce non-JSON-compliant floats (nan, inf, -inf) to strings.
+
+    FastAPI's default validation handler echoes the offending input back in the
+    error detail. A body like {"text": NaN} is accepted by the stdlib JSON parser,
+    so the echoed input is a non-finite float; Starlette then renders the 422 with
+    allow_nan=False and raises, turning the 422 into a 500. Coercing here keeps it 422.
+    """
+    if isinstance(value, float):
+        return str(value) if (math.isnan(value) or math.isinf(value)) else value
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc: RequestValidationError) -> JSONResponse:
+    # jsonable_encoder flattens non-serializable ctx objects (e.g. the ValueError a
+    # custom validator raises); _json_safe then neutralizes any non-finite float the
+    # encoder leaves as-is. Both are required: the encoder alone 500s on NaN, and
+    # float-coercion alone 500s on the blank-text ctx error.
+    return JSONResponse(
+        status_code=422,
+        content={"detail": _json_safe(jsonable_encoder(exc.errors()))},
+    )
 
 
 @app.get("/health", response_model=HealthResponse)

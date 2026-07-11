@@ -11,6 +11,7 @@ TestClient drives the app in-process, so no server needs to be running.
 """
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 import main
@@ -114,3 +115,19 @@ def test_load_reviews_reads_review_column(tmp_path):
     )
     reviews = main.load_reviews(Path(csv_path))
     assert reviews == ["Great, loved it", "Awful"]
+
+
+@pytest.mark.parametrize("literal", [b"NaN", b"Infinity", b"-Infinity", b"1e400"])
+def test_predict_rejects_nonfinite_numbers_with_422_not_500(literal):
+    # These JSON literals parse to nan/inf server-side; the response must be a clean 422.
+    body = b'{"text": ' + literal + b"}"
+    response = client.post("/predict", content=body, headers={"content-type": "application/json"})
+    assert response.status_code == 422
+
+
+def test_normal_validation_errors_still_return_422_detail():
+    # The custom handler must not regress ordinary validation failures.
+    for bad in ({}, {"text": "   "}, {"text": "ok", "junk": "x"}):
+        response = client.post("/predict", json=bad)
+        assert response.status_code == 422
+        assert isinstance(response.json()["detail"], list)
