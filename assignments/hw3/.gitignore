@@ -11,6 +11,6 @@ venv/
 .env
 *.env
 
-# The full IMDB dataset is large and gitignored; the committed examples.csv sample
-# (re-included in the repo-root .gitignore) is what ships. Keep the full file out.
-IMDB Dataset.csv
+# The full IMDB dataset ships with this assignment so /example serves a real
+# training review and the folder is self-contained. Re-included past the root *.csv rule.
+!IMDB Dataset.csv

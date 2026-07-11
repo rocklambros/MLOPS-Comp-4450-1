@@ -281,10 +281,8 @@ wandb/
 !assignments/hw2/model.pkl
 
 # A3 deliverable (hw3): the FastAPI container needs the model committed so it builds
-# from a fresh clone, and /example needs the sample CSV. Re-include both despite the
-# *.pkl and *.csv rules above.
+# from a fresh clone. Re-include despite the *.pkl rule above.
 !assignments/hw3/sentiment_model.pkl
-!assignments/hw3/examples.csv
 
 # A5 deliverable (hw7): the API container needs the model committed so it builds from
 # a fresh clone, so re-include it despite the *.pkl rule above.
