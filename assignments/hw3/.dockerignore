@@ -9,7 +9,6 @@ tests/
 .dockerignore
 Makefile
 requirements-dev.txt
-make_examples.py
 .env
-# The full dataset never goes in the image; /example uses the committed examples.csv.
-IMDB Dataset.csv
+# Keep the Postman collection out of the image; it's a dev artifact, not a runtime dep.
+*.json
