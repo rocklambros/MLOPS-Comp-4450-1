@@ -2,8 +2,8 @@
 
 A FastAPI REST service that serves a trained movie-review sentiment model over four
 endpoints, validates every request with Pydantic, and ships as a Docker container. This
-folder is self-contained: the trained model and a sample of reviews are committed, so it
-builds and runs from a fresh clone with no other assignment present.
+folder is self-contained: the trained model and the full IMDB dataset are committed, so
+it builds and runs from a fresh clone with no other assignment present.
 
 ## Where this sits in the course
 
@@ -48,15 +48,21 @@ curl http://localhost:8000/health
 # {"status":"ok"}
 ```
 
-The build needs no downloads: the model (`sentiment_model.pkl`) and the review sample
-(`examples.csv`) are committed and copied into the image. A healthcheck is baked in, so
-`docker ps` reports the container as `healthy` once it is serving. Stop the container with
-Ctrl-C, and remove the image with `make clean`.
+The build needs no downloads: the model (`sentiment_model.pkl`) and the full dataset
+(`IMDB Dataset.csv`) are committed and copied into the image. A healthcheck is baked in,
+so `docker ps` reports the container as `healthy` once it is serving. Stop the container
+with Ctrl-C, and remove the image with `make clean`.
+
+If host port 8000 is already taken, remap the published port instead of the container
+port: `docker run --rm -p 8001:8000 sentiment-api`. The API still listens on 8000 inside
+the container. Only the host-side mapping changes.
 
 ## Exercise every endpoint
 
 With the container running (or `uvicorn main:app` locally), each endpoint responds as
-below. The `/predict_proba` value is deterministic, so the number reproduces exactly.
+below. The `/predict_proba` value is deterministic, so the number reproduces exactly
+under the pinned environment (0.7697). Different scikit-learn or NumPy versions can
+shift the floating-point result.
 
 ```bash
 curl -X POST http://localhost:8000/predict \
@@ -70,12 +76,28 @@ curl -X POST http://localhost:8000/predict_proba \
 # {"sentiment":"positive","probability":0.7697}
 
 curl http://localhost:8000/example
-# {"review":"..."}   a random review from the sample data
+# {"review":"..."}   a random review from the full IMDB dataset, <br> tags stripped
 ```
 
 Pydantic rejects a bad body with HTTP 422 before it reaches the model. A request with no
 `text` field, with blank or whitespace text, with any field other than `text`, or with
 text longer than 20,000 characters returns 422.
+
+## Test with Postman
+
+Postman Desktop is the stated grading tool, so a ready-to-import collection is committed
+at `hw3.postman_collection.json`.
+
+1. Start the container: `make build && make run`.
+2. In Postman, **Import** → select `hw3.postman_collection.json` from this folder.
+3. Run each of the four requests in the "HW3 Sentiment API" collection:
+
+| Request | Status | Expected response |
+|---|---|---|
+| `health` | `200` | `{"status":"ok"}` |
+| `predict` | `200` | `{"sentiment":"positive"}` |
+| `predict_proba` | `200` | `{"sentiment":"positive","probability":<float>}` |
+| `example` | `200` | `{"review":"..."}`, a random dataset review |
 
 ## Run the tests
 
@@ -99,6 +121,10 @@ pip install -r requirements.txt
 uvicorn main:app --reload  # serves on http://127.0.0.1:8000
 ```
 
+The hashed requirements were resolved for Python 3.13, so a local `pip install` needs a
+3.13 interpreter to match the pinned hashes. The container path is unaffected: the image
+always builds on `python:3.13-slim` regardless of the host's Python version.
+
 ## Rubric coverage
 
 Every requirement in the spec, and where to check it.
@@ -119,13 +145,30 @@ Every requirement in the spec, and where to check it.
 
 - `main.py` - the FastAPI app and the four endpoints
 - `sentiment_model.pkl` - the trained sentiment pipeline the API serves
-- `examples.csv` - 200 real IMDB reviews (100 positive, 100 negative) backing `/example`
-- `make_examples.py` - regenerates `examples.csv` deterministically from the full dataset
+- `IMDB Dataset.csv` - the full IMDB dataset backing `/example`
+- `hw3.postman_collection.json` - importable Postman requests for all four endpoints
 - `requirements.txt` - pinned runtime dependencies (reproducible build)
 - `requirements-dev.txt` - test and lint tools, kept out of the image
 - `Dockerfile`, `.dockerignore` - container build
 - `Makefile` - `build`, `run`, `clean`, `test`, `smoke`
 - `tests/test_api.py` - endpoint, validation, and degraded-mode checks
+
+## Model integrity
+
+`sentiment_model.pkl` is committed, not downloaded, so its hash should match this build:
+
+```
+b3ba5948ea171da3e9b9d2211d33047b4a15008e76acd53389e238b6e0790329
+```
+
+Verify with:
+
+```bash
+shasum -a 256 sentiment_model.pkl
+```
+
+A mismatch means the file was regenerated, corrupted in transit, or tampered with, and
+the `0.7697` reproducibility claim above no longer applies to that copy.
 
 ## Design notes
 
@@ -135,15 +178,18 @@ Every requirement in the spec, and where to check it.
   install the dependencies or load the model.
 - **Port 8000.** Fixed and consistent across the Dockerfile `EXPOSE`, the `docker run`
   mapping, and the Makefile. Assignment 2's Streamlit app stays on 8501, so both run at once.
-- **`/example` data source.** The endpoint prefers the full `IMDB Dataset.csv` when it is
-  present next to `main.py` (point `EXAMPLE_DATA_PATH` elsewhere to override), and otherwise
-  falls back to the committed `examples.csv`. The full dataset (about 63 MB) is gitignored
-  and never enters the image, so the sample serves inside the container and from a fresh
-  clone. `make_examples.py` regenerates that sample deterministically (fixed seed 4450), so
-  it is reproducible rather than an opaque file.
+- **`/example` data source.** The endpoint reads from the full `IMDB Dataset.csv`
+  committed next to `main.py` (point `EXAMPLE_DATA_PATH` elsewhere to override). The
+  dataset carries literal `<br />` line breaks from the source HTML. `/example` strips
+  them before returning the review. The file is committed (not gitignored), so it is
+  present in the image at `COPY` time and on a fresh clone.
 - **Degraded modes, not crashes.** A missing or unreadable model, or a misconfigured
   `EXAMPLE_DATA_PATH`, does not take the process down. `/health` stays up and the affected
   endpoint answers 503, so a configuration problem is explicit to the caller.
+- **Docker packaging.** The Dockerfile follows FastAPI's own deployment guidance
+  (https://fastapi.tiangolo.com/deployment/docker/): a slim Python base, dependencies
+  installed before the app is copied in for layer caching, and `uvicorn` run directly as
+  the container's entrypoint rather than behind a process manager.
 
 ## Assignment metadata
 

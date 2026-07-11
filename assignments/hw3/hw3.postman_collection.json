@@ -1,0 +1,34 @@
+{
+  "info": {
+    "name": "HW3 Sentiment API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "health",
+      "request": { "method": "GET", "url": "http://localhost:8000/health" }
+    },
+    {
+      "name": "predict",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\"text\": \"This movie was a masterpiece!\"}" },
+        "url": "http://localhost:8000/predict"
+      }
+    },
+    {
+      "name": "predict_proba",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\"text\": \"This movie was a masterpiece!\"}" },
+        "url": "http://localhost:8000/predict_proba"
+      }
+    },
+    {
+      "name": "example",
+      "request": { "method": "GET", "url": "http://localhost:8000/example" }
+    }
+  ]
+}
