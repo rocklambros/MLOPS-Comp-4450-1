@@ -33,6 +33,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from starlette.requests import Request
 
 logger = logging.getLogger("sentiment_api")
 
@@ -265,7 +266,7 @@ def _json_safe(value):
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request, exc: RequestValidationError) -> JSONResponse:
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     # jsonable_encoder flattens non-serializable ctx objects (e.g. the ValueError a
     # custom validator raises); _json_safe then neutralizes any non-finite float the
     # encoder leaves as-is. Both are required: the encoder alone 500s on NaN, and

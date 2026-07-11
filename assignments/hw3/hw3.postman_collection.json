@@ -22,7 +22,7 @@
       "request": {
         "method": "POST",
         "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": { "mode": "raw", "raw": "{\"text\": \"This movie was a masterpiece!\"}" },
+        "body": { "mode": "raw", "raw": "{\"text\": \"One of the best films I have seen in years. Every scene earns its place, the pacing never drags, and the lead performance is unforgettable.\"}" },
         "url": "http://localhost:8000/predict_proba"
       }
     },
