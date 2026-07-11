@@ -131,3 +131,24 @@ def test_normal_validation_errors_still_return_422_detail():
         response = client.post("/predict", json=bad)
         assert response.status_code == 422
         assert isinstance(response.json()["detail"], list)
+
+
+def test_get_endpoints_unaffected_by_body_middleware():
+    # The middleware must be a no-op for body-less GET (regression guard).
+    assert client.get("/health").status_code == 200
+    assert client.get("/example").status_code == 200
+
+
+def test_oversized_declared_body_rejected_413():
+    body = b'{"text": "' + b"a" * (1024 * 1024 + 100) + b'"}'
+    response = client.post("/predict", content=body, headers={"content-type": "application/json"})
+    assert response.status_code == 413
+
+
+def test_oversized_chunked_body_rejected():
+    # No Content-Length (streamed) must still be bounded by counting bytes.
+    def gen():
+        for _ in range(24):
+            yield b"a" * (100 * 1024)  # ~2.4 MiB total
+    response = client.post("/predict", content=gen(), headers={"content-type": "application/json"})
+    assert response.status_code == 413

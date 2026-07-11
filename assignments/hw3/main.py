@@ -41,11 +41,19 @@ logger = logging.getLogger("sentiment_api")
 # /example output, so this display cleanup has no effect on predictions.
 _BR_TAG = re.compile(r"<br\s*/?>", re.IGNORECASE)
 
-# Cap request text length. TfidfVectorizer.transform cost scales with input size, and
-# the request body is buffered in full before it reaches the model, so an unbounded
-# string is a memory/CPU amplification vector. 20k characters comfortably fits a long
-# movie review; anything larger is rejected with 422 before any work happens.
+# Cap request text length. TfidfVectorizer.transform cost scales with input size, so an
+# unbounded string is a CPU amplification vector at validation. This field cap bounds
+# model work; it does not bound the raw bytes buffered off the wire before validation
+# runs — that is BodySizeLimitMiddleware's job (see MAX_BODY_BYTES below). 20k
+# characters comfortably fits a long movie review; anything larger is rejected with 422
+# before any work happens.
 MAX_TEXT_LENGTH = 20_000
+
+# Cap the raw request body. Pydantic's max_length above caps model work, but the full
+# body is buffered before validation runs, so an unbounded body is a memory-amplification
+# vector regardless of what the field validator eventually rejects. BodySizeLimitMiddleware
+# enforces this ceiling on actual bytes read, ahead of validation.
+MAX_BODY_BYTES = 1024 * 1024  # 1 MiB ceiling on the raw request body.
 
 HERE = Path(__file__).resolve().parent
 MODEL_PATH = HERE / "sentiment_model.pkl"
@@ -163,6 +171,72 @@ class ExampleResponse(BaseModel):
     review: str
 
 
+class _BodyTooLarge(BaseException):
+    """Raised inside the receive wrapper when the streamed body exceeds the ceiling.
+
+    Deliberately a BaseException, not Exception (same reasoning as asyncio.CancelledError
+    and GeneratorExit). FastAPI's routing.py wraps `await request.body()` in a bare
+    `except Exception` that converts ANY exception into a generic HTTPException(400,
+    "There was an error parsing the body") and lets Starlette's ExceptionMiddleware send
+    that response from inside the app -- before this exception could ever reach the outer
+    middleware's own handler. Subclassing BaseException lets the reject-mid-stream signal
+    skip every `except Exception` in FastAPI/Starlette's internals and actually surface at
+    BodySizeLimitMiddleware, which converts it to the intended 413.
+    """
+
+
+class BodySizeLimitMiddleware:
+    """Pure-ASGI middleware bounding the raw request body to max_body_bytes.
+
+    Pydantic's max_length caps model work, but the full body is buffered before
+    validation runs, so an unbounded body is a memory-amplification vector. This
+    bounds actual bytes read: it rejects a declared-oversize Content-Length up front,
+    and counts streamed bytes so a chunked body (no Content-Length) cannot slip past.
+    Body-less requests (GET /health, /example) stream no bytes and pass through.
+    """
+
+    def __init__(self, app, max_body_bytes: int = MAX_BODY_BYTES):
+        self.app = app
+        self.max_body_bytes = max_body_bytes
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        for name, value in scope.get("headers", []):
+            if name == b"content-length":
+                try:
+                    if int(value) > self.max_body_bytes:
+                        await self._reject(send)
+                        return
+                except ValueError:
+                    pass  # Unparseable header: fall through to byte counting.
+                break
+        received = 0
+
+        async def limited_receive():
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self.max_body_bytes:
+                    raise _BodyTooLarge()
+            return message
+
+        try:
+            await self.app(scope, limited_receive, send)
+        except _BodyTooLarge:
+            await self._reject(send)
+
+    async def _reject(self, send):
+        await send({
+            "type": "http.response.start",
+            "status": 413,
+            "headers": [(b"content-type", b"application/json")],
+        })
+        await send({"type": "http.response.body", "body": b'{"detail":"request body too large"}'})
+
+
 app = FastAPI(
     title="Movie Review Sentiment API",
     description=(
@@ -170,6 +244,7 @@ app = FastAPI(
     ),
     version="1.0.0",
 )
+app.add_middleware(BodySizeLimitMiddleware)
 
 
 def _json_safe(value):
