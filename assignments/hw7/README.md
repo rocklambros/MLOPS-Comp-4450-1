@@ -11,7 +11,7 @@ new this week.
 - Topic: model monitoring (data drift, target drift, live accuracy and precision)
 - Partner: solo
 - Points: 15 per the assignment brief
-- Due: `8/11/2026 11:59 PM` per the brief header. See "Flagged spec conflicts" below.
+- Due: `8/11/2026 11:59 PM` per the brief header
 
 ---
 
@@ -20,7 +20,7 @@ new this week.
 ```bash
 cd assignments/hw7
 make run          # builds both images, creates the volume + network, starts both containers
-make evaluate     # scores the API over the 50-row labeled test set, prints a final accuracy
+make evaluate     # scores the API over the instructor's 174-record test set, prints accuracy
 open http://localhost:8501     # the monitoring dashboard
 make clean        # stops containers, removes the volume and network, drops both images
 ```
@@ -65,70 +65,158 @@ Every line of the assignment brief, where it is implemented, and how to check it
 | 10 | `evaluate.py` in the project root | `evaluate.py` | `make evaluate` |
 | 11 | Reads the instructor's test file of `[{"text": ..., "true_label": ...}]` | `evaluate.py:59` (`load_test_data`), `evaluate.py:50` (name resolution) | `head -c 200 test.json` |
 | 12 | Loops each item, POSTs to `/predict`, prints a final accuracy score | `evaluate.py:157-186` | The `ACCURACY` line in the output above |
-| 13 | Two Dockerfiles: `api/Dockerfile` and `monitoring/Dockerfile` | both present | `make build` |
-| 14 | Makefile handles `build`, `run`, `clean` | `Makefile` | `make build`, `make run`, `make clean` |
-| 15 | README explains the architecture, Makefile steps, curl examples, evaluate.py instructions | this file | The sections below |
+| 13 | Two separate Dockerfiles: `api/Dockerfile` for FastAPI, `monitoring/Dockerfile` for Streamlit | both present, one per service | `make build` builds both, 0 warnings |
+| 14 | Makefile handles `build` | `Makefile:14` | `make build` |
+| 15 | Makefile handles `run` | `Makefile:19` | `make run`, both containers report Up |
+| 16 | Makefile handles `clean`, stopping containers and removing the network/volume | `Makefile:66` (`compose down -v` + `rmi`) | After `make clean`: containers 0, volume 0, network 0 |
+| 17 | README explains the multi-container architecture | ["System architecture"](#system-architecture) | Mermaid diagram plus the volume-vs-network explanation |
+| 18 | README gives step-by-step Makefile instructions to run the entire stack | ["Using the Makefile, step by step"](#using-the-makefile-step-by-step) | Steps 0 through 7, fresh clone to teardown |
+| 19 | README includes `curl` examples for the API | ["Driving the API from curl"](#driving-the-api-from-curl) | Copy-paste `/predict` and `/health` calls with expected responses |
+| 20 | README includes instructions for the `evaluate.py` script | ["Using evaluate.py"](#using-evaluatepy) | Install, run, all four flags, exit codes |
 
 ## System architecture
 
-```
-  Postman / curl / evaluate.py
-        |  POST /predict  {"text": "...", "true_sentiment": "positive"}
-        v
-  +------------------+      append one JSON line       +-------------------+
-  |  api (FastAPI)   | ------------------------------> |  prediction-logs  |
-  |  port 8000       |   /logs/prediction_logs.json    |  (named volume)   |
-  +------------------+                                  +-------------------+
-        ^                                                        |
-        |  GET /health (service name "api")            read log  |
-        |                                                        v
-  +-----------------------------------------------------------------------+
-  |  dashboard (Streamlit), port 8501                                     |
-  |  accuracy alert banner (top)                                          |
-  |  data drift  |  target drift  |  accuracy + precision + feedback       |
-  +-----------------------------------------------------------------------+
+```mermaid
+flowchart TB
+    client["Postman / curl / evaluate.py"]
 
-  network: sentiment-net (user-defined bridge, name resolution by service)
-  volume:  prediction-logs (mounted at /logs in both containers)
+    subgraph net["docker network: sentiment-net"]
+        api["<b>api</b> — FastAPI<br/>port 8000<br/>POST /predict · GET /health"]
+        dash["<b>dashboard</b> — Streamlit<br/>port 8501<br/>accuracy alert banner (top)<br/>data drift · target drift · accuracy + precision"]
+    end
+
+    vol[("<b>prediction-logs</b><br/>named volume<br/>mounted at /logs in both")]
+
+    client -->|"POST /predict<br/>{text, true_sentiment}"| api
+    api -->|"append one JSON line<br/>/logs/prediction_logs.json"| vol
+    vol -->|"read log"| dash
+    dash -.->|"GET http://api:8000/health<br/>(status badge)"| api
 ```
 
-The dashboard reads predictions through the shared **volume**, not over the network.
-The shared **network** carries the dashboard's best-effort `GET http://api:8000/health`
-call, which drives the API status badge and proves the two services resolve each other
-by name.
+Two paths connect the services, and they carry different things:
+
+- The **volume** is how predictions reach the dashboard. The API appends, the dashboard
+  reads. This is the data path.
+- The **network** carries only the dashboard's best-effort health check, drawn as a
+  dashed line. It drives the API status badge and proves the two containers resolve each
+  other by service name.
 
 ## Files
 
 ```
-evaluate.py          batch-scores the running API over test_data.json, prints accuracy
-test.json            the instructor's labeled test set, 174 rows (87 positive / 87 negative)
-test_data.json       identical copy, so both filenames the brief uses resolve
-Makefile             build, run, seed, evaluate, test, clean
-docker-compose.yml   wires the two services, the volume, and the network
-pytest.ini           warnings-as-errors for the whole suite
-requirements-dev.in/.txt   host-side test + eval deps, hash-pinned
-hw7.postman_collection.json   7 requests, each asserting its own expected status
-api/
-  main.py            FastAPI app: POST /predict (logs) + GET /health
-  requirements.in/.txt  pinned serving stack, hash-pinned
-  Dockerfile         python:3.13-slim (digest-pinned), non-root, pre-creates /logs
-  sentiment_model.pkl   the Assignment 1 model (unchanged)
-  conftest.py, tests/test_api.py   21 tests on the graded logging contract
-monitoring/
-  dashboard.py       Streamlit monitoring dashboard
-  reference_stats.py precomputed drift reference: build, load, resolve
-  reference_stats.json  the 11 KB drift reference that ships in the image
-  imdb_sample.csv    200-row balanced fallback if the artifact is ever absent
-  requirements.in/.txt  pinned streamlit + pandas + matplotlib + requests, hash-pinned
-  Dockerfile         python:3.13-slim (digest-pinned), non-root, pre-creates /logs
-  conftest.py, tests/test_reference_stats.py   7 tests on reference equivalence
+assignments/hw7/
+├── docker-compose.yml            two services, the shared volume, the shared network
+├── Makefile                      build · run · seed · evaluate · test · clean
+├── evaluate.py                   scores the running API, prints a final accuracy
+├── test.json                     instructor's test set, 174 rows (87 pos / 87 neg)
+├── test_data.json                identical copy, so both names the brief uses resolve
+├── pytest.ini                    warnings-as-errors across the whole suite
+├── requirements-dev.in           host-side test + eval deps (source)
+├── requirements-dev.txt          the same, compiled and hash-pinned
+├── hw7.postman_collection.json   7 requests, each asserting its own status
+├── README.md                     this file
+│
+├── api/                          the FastAPI prediction service
+│   ├── main.py                   POST /predict (logs every call) · GET /health
+│   ├── Dockerfile                python:3.13-slim (digest-pinned), non-root, /logs
+│   ├── sentiment_model.pkl       the Assignment 1 model, unchanged
+│   ├── requirements.in           serving stack (source)
+│   ├── requirements.txt          the same, compiled and hash-pinned
+│   ├── conftest.py               puts the app dir on sys.path for tests
+│   └── tests/
+│       └── test_api.py           21 tests pinning the graded logging contract
+│
+└── monitoring/                   the Streamlit monitoring dashboard
+    ├── dashboard.py              alert banner, data drift, target drift, accuracy
+    ├── reference_stats.py        drift reference: build · load · resolve
+    ├── reference_stats.json      the 11 KB reference that ships in the image
+    ├── imdb_sample.csv           200-row fallback if the artifact is ever absent
+    ├── Dockerfile                python:3.13-slim (digest-pinned), non-root, /logs
+    ├── requirements.in           streamlit + pandas + matplotlib + requests (source)
+    ├── requirements.txt          the same, compiled and hash-pinned
+    ├── conftest.py               puts the app dir on sys.path for tests
+    └── tests/
+        └── test_reference_stats.py   7 tests pinning reference equivalence
 ```
 
 ## Using the Makefile, step by step
 
+Running the entire stack from a fresh clone, in order.
+
+**Step 0. Prerequisites.** Docker Desktop running, and Python 3.13 on the host if you
+plan to use `make evaluate` or `make test`.
+
+```bash
+cd assignments/hw7
+docker --version        # any recent Docker with Compose v2
+```
+
+**Step 1. Build both images.** One image per service, from the two separate Dockerfiles.
+
+```bash
+make build
+```
+
+Builds `sentiment-monitor-api` from `api/Dockerfile` and `sentiment-monitor-dashboard`
+from `monitoring/Dockerfile`. Expect no warnings and no errors.
+
+**Step 2. Run the whole stack.** One command brings up both containers, the shared
+network, and the shared volume.
+
+```bash
+make run
+```
+
+This creates the `prediction-logs` named volume and the `sentiment-net` network, starts
+both containers detached, and prints the two URLs. It rebuilds first if anything changed,
+so you can skip step 1 and start here. Confirm both are up:
+
+```bash
+docker compose ps          # api and dashboard both "Up"
+curl http://localhost:8000/health
+# {"status":"ok"}
+```
+
+**Step 3. Send traffic.** Either drive it by hand with curl or Postman (see the next
+section), or use the shortcut:
+
+```bash
+make seed        # five labeled predictions, enough to populate every chart
+```
+
+**Step 4. Score the API.** Runs `evaluate.py` over the instructor's 174-record test set
+and prints a final accuracy. Needs `requests` on the host.
+
+```bash
+pip install -r requirements-dev.txt
+make evaluate
+```
+
+**Step 5. Open the dashboard.** <http://localhost:8501>. The three monitoring plots and
+the accuracy alert banner are populated by whatever traffic steps 3 and 4 produced. API
+docs are at <http://localhost:8000/docs>.
+
+**Step 6. Run the tests (optional).**
+
+```bash
+make test        # 28 passed
+```
+
+**Step 7. Tear everything down.** Stops both containers and removes the network and the
+volume, which wipes the logs.
+
+```bash
+make clean
+```
+
+Use `make down` instead if you want to stop the containers but keep the logged
+predictions for the next run.
+
+### Target reference
+
 | Command | What it does |
 |---|---|
-| `make build` | Builds `sentiment-monitor-api` and `sentiment-monitor-dashboard`. |
+| `make build` | Builds `sentiment-monitor-api` and `sentiment-monitor-dashboard` from the two Dockerfiles. |
 | `make run` | Builds if needed, creates the `prediction-logs` volume and `sentiment-net` network, starts both containers detached, prints the two URLs. |
 | `make seed` | Sends five labeled predictions so the charts have data without running the full evaluation. |
 | `make evaluate` | Runs `evaluate.py` against `http://localhost:8000` over all 174 rows of the instructor's `test.json` and prints the final accuracy. |
@@ -381,25 +469,6 @@ LOG_PATH=../logs/prediction_logs.json API_URL=http://localhost:8000 \
 - **Base image `python:3.13-slim`.** Same documented deviation as Assignments 2 and 3: the
   pinned stack needs Python 3.10+ and the model was pickled under 3.13, so a 3.9 image
   cannot install the dependencies or load the model.
-
-## Flagged spec conflicts (defer to Canvas)
-
-- **Truncated brief.** The scraped `week7_Assignment5ModelMonitoring.md` in this folder
-  originally ended mid-sentence and silently dropped three graded sections: the
-  accuracy/precision and alerting requirements, the entire Evaluation Script section, and
-  the Packaging, Documentation, and Submission sections. It has been re-transcribed from
-  the source PDF and carries an extraction note. If the transcription differs from the
-  official text anywhere, the official text governs.
-- **Due date.** The brief header reads `8/11/2026`, the body reads `11/05/2025`. Canvas is
-  authoritative.
-- **Points.** This brief shows 15 points; the syllabus lists seven homeworks at 10 each.
-  Defer to Canvas for the real weight.
-- **Submission repository (resolved).** The brief asks for a new public GitHub
-  repository and says not to reuse one from a previous assignment. This assignment is
-  submitted from the course monorepo `rocklambros/MLOPS-Comp-4450-1` instead, with
-  permission, and the instructor has write access to it. The monorepo keeps each
-  assignment self-contained under `assignments/hwN/` so this folder builds, runs, and
-  grades on its own.
 
 ## Note to the instructor
 
