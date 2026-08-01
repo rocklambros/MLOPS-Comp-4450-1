@@ -388,11 +388,12 @@ LOG_PATH=../logs/prediction_logs.json API_URL=http://localhost:8000 \
   authoritative.
 - **Points.** This brief shows 15 points; the syllabus lists seven homeworks at 10 each.
   Defer to Canvas for the real weight.
-- **Submission repository.** The brief asks for a **new public GitHub repository**, and
-  says not to reuse a repository from a previous assignment. This assignment currently
-  lives in the course monorepo alongside the earlier weeks. Confirm the intended
-  submission channel before the deadline. Nothing in this folder can satisfy that
-  requirement by itself.
+- **Submission repository (resolved).** The brief asks for a new public GitHub
+  repository and says not to reuse one from a previous assignment. This assignment is
+  submitted from the course monorepo `rocklambros/MLOPS-Comp-4450-1` instead, with
+  permission, and the instructor has write access to it. The monorepo keeps each
+  assignment self-contained under `assignments/hwN/` so this folder builds, runs, and
+  grades on its own.
 
 ## Note to the instructor
 
