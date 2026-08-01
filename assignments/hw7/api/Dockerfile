@@ -5,7 +5,12 @@
 # (scikit-learn 1.9, numpy 2.4) needs Python 3.10+ and the model was pickled under
 # 3.13, so 3.13-slim matches the build and loads the model cleanly. Documented
 # deviation carried forward from Assignments 2 and 3 (see README).
-FROM python:3.13-slim
+#
+# Digest-pinned, not tag-pinned: `python:3.13-slim` is a moving target, so a rebuild
+# months from now would silently pull a different base than the one that was tested.
+# Digest resolved 2026-08-01. Re-resolve with:
+#   docker buildx imagetools inspect python:3.13-slim
+FROM python:3.13-slim@sha256:6771159cd4fa5d9bba1258caf0b82e6b73458c694d178ad97c5e925c2d0e1a91
 
 # Non-root user with a home directory: least privilege for the serving process.
 # /logs is pre-created and owned by appuser so the empty named volume initializes
@@ -16,9 +21,13 @@ RUN useradd --create-home --uid 1000 appuser \
 
 WORKDIR /app
 
-# Requirements first so the dependency layer caches across app changes.
+# Requirements first so the dependency layer caches across app changes. Hashes in the
+# lockfile make pip verify every artifact before install. --root-user-action=ignore
+# silences pip's "don't run as root" notice: installing into the image as root and then
+# dropping to appuser for the runtime is the intended pattern here, so the warning is
+# noise that would otherwise hide a real one.
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt
 
 # App and model, owned by the non-root user. The full IMDB dataset is never copied
 # (large, gitignored); the dashboard, not the API, holds the reference sample.
