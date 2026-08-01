@@ -33,17 +33,19 @@ Expected output from `make evaluate` on a clean stack:
 
 ```
 ====================================================
-Scored          : 50 of 50
-Correct         : 40
-ACCURACY        : 80.00%
-Precision (neg) : 82.61%
-Precision (pos) : 77.78%
-Predicted mix   : {'negative': 23, 'positive': 27}
+Scored          : 174 of 174
+Correct         : 165
+ACCURACY        : 94.83%
+Precision (neg) : 94.32%
+Precision (pos) : 95.35%
+Predicted mix   : {'positive': 86, 'negative': 88}
 ====================================================
 ```
 
-Those 50 calls also populate the dashboard, so after `make evaluate` the accuracy panel
-and all three plots have real data. No separate seeding step is required.
+That is the instructor's `test.json`, all 174 records, scored against the running
+container. Those 174 calls also populate the dashboard, so after `make evaluate` the
+accuracy panel and all three plots have real data. No separate seeding step is
+required.
 
 ## Requirement-to-evidence map
 
@@ -51,18 +53,18 @@ Every line of the assignment brief, where it is implemented, and how to check it
 
 | # | Requirement (from the brief) | Where | How to verify |
 |---|---|---|---|
-| 1 | FastAPI app with `POST /predict` | `api/main.py:260` | `curl -X POST localhost:8000/predict -H 'Content-Type: application/json' -d '{"text":"great"}'` |
-| 2 | Every request logs a JSON object to `prediction_logs.json` in a `/logs` directory | `api/main.py:242` (`append_log`) | `docker compose exec dashboard cat /logs/prediction_logs.json` |
-| 3 | Each log entry is a new line | `api/main.py:251` (one `json.dumps` + `\n` per call) | `test_each_request_appends_one_new_line` |
-| 4 | Log carries `timestamp`, `request_text`, `predicted_sentiment`, `true_sentiment` | `api/main.py:267-271` | `test_predict_logs_exactly_the_four_required_fields` (exact-set equality) |
+| 1 | FastAPI app with `POST /predict` | `api/main.py:271` | `curl -X POST localhost:8000/predict -H 'Content-Type: application/json' -d '{"text":"great"}'` |
+| 2 | Every request logs a JSON object to `prediction_logs.json` in a `/logs` directory | `api/main.py:253` (`append_log`) | `docker compose exec dashboard cat /logs/prediction_logs.json` |
+| 3 | Each log entry is a new line | `api/main.py:262` (one `json.dumps` + `\n` per call) | `test_each_request_appends_one_new_line` |
+| 4 | Log carries `timestamp`, `request_text`, `predicted_sentiment`, `true_sentiment` | `api/main.py:278-282` | `test_predict_logs_exactly_the_four_required_fields` (exact-set equality) |
 | 5 | Streamlit app reads and parses the log from the shared `/logs` | `monitoring/dashboard.py:63` (`load_logs`) | Dashboard header reads "Loaded N logged prediction(s)" |
 | 6 | Data drift: histogram of sentence lengths, `IMDB Dataset.csv` vs logged requests | `monitoring/dashboard.py:169-202` | Dashboard section 1. Reference provenance is proven below. |
 | 7 | Target drift: bar chart, predicted sentiments vs trained sentiments | `monitoring/dashboard.py:204-238` | Dashboard section 2 |
 | 8 | Accuracy **and precision** from all collected feedback | `monitoring/dashboard.py:240-323` | Dashboard section 3: live accuracy, precision (positive), precision (macro), per-class precision/recall |
 | 9 | **Alerting**: accuracy below 80% shows a prominent banner via `st.error()` | `monitoring/dashboard.py:266` | Drive accuracy under 80% and the red banner renders at the top of the page, above every chart |
 | 10 | `evaluate.py` in the project root | `evaluate.py` | `make evaluate` |
-| 11 | Reads `test_data.json` of `[{"text": ..., "true_label": ...}]` | `evaluate.py:44` (`load_test_data`) | `head -c 200 test_data.json` |
-| 12 | Loops each item, POSTs to `/predict`, prints a final accuracy score | `evaluate.py:138-174` | The `ACCURACY` line in the output above |
+| 11 | Reads the instructor's test file of `[{"text": ..., "true_label": ...}]` | `evaluate.py:59` (`load_test_data`), `evaluate.py:50` (name resolution) | `head -c 200 test.json` |
+| 12 | Loops each item, POSTs to `/predict`, prints a final accuracy score | `evaluate.py:157-186` | The `ACCURACY` line in the output above |
 | 13 | Two Dockerfiles: `api/Dockerfile` and `monitoring/Dockerfile` | both present | `make build` |
 | 14 | Makefile handles `build`, `run`, `clean` | `Makefile` | `make build`, `make run`, `make clean` |
 | 15 | README explains the architecture, Makefile steps, curl examples, evaluate.py instructions | this file | The sections below |
@@ -99,7 +101,8 @@ by name.
 
 ```
 evaluate.py          batch-scores the running API over test_data.json, prints accuracy
-test_data.json       50 labeled IMDB reviews (25 positive / 25 negative), seed 4450
+test.json            the instructor's labeled test set, 174 rows (87 positive / 87 negative)
+test_data.json       identical copy, so both filenames the brief uses resolve
 Makefile             build, run, seed, evaluate, test, clean
 docker-compose.yml   wires the two services, the volume, and the network
 pytest.ini           warnings-as-errors for the whole suite
@@ -128,7 +131,7 @@ monitoring/
 | `make build` | Builds `sentiment-monitor-api` and `sentiment-monitor-dashboard`. |
 | `make run` | Builds if needed, creates the `prediction-logs` volume and `sentiment-net` network, starts both containers detached, prints the two URLs. |
 | `make seed` | Sends five labeled predictions so the charts have data without running the full evaluation. |
-| `make evaluate` | Runs `evaluate.py` against `http://localhost:8000` over all 50 rows of `test_data.json` and prints the final accuracy. |
+| `make evaluate` | Runs `evaluate.py` against `http://localhost:8000` over all 174 rows of the instructor's `test.json` and prints the final accuracy. |
 | `make test` | Runs all 28 tests (21 API + 7 reference). Needs `pip install -r requirements-dev.txt`. |
 | `make logs` | Follows both containers' logs. |
 | `make down` | Stops the containers, keeps the volume so logs persist. |
@@ -212,18 +215,21 @@ it. The label never reaches the model: `/predict` classifies `text` alone and lo
 The script exits 0 on a clean run, 1 if any record failed to score, and 2 if the API is
 unreachable. A single failed request is reported and does not abort the run.
 
-### About `test_data.json`
+### About the test file
 
-The brief links an instructor-provided `test.json` at the end of the PDF. That link was
-not retrievable from the assignment file, so `test_data.json` here is a stand-in built
-from the genuine IMDB dataset: 50 rows, 25 positive and 25 negative, sampled with seed
-4450 from the same `IMDB Dataset.csv` the model was trained on. It uses the exact schema
-the brief specifies, `[{"text": ..., "true_label": ...}]`. **To grade against the
-instructor's file, drop it in and run `python evaluate.py --test-data <file>`.** No code
-change is needed as long as it matches that schema.
+This ships the **instructor's `test.json`** verbatim: 174 records, 87 positive and 87
+negative, schema `[{"text": ..., "true_label": ...}]`.
 
-Note that these 50 rows come from the training corpus, so 80% is a generous read of true
-generalization. The number is a smoke test of the serving path, not a held-out estimate.
+The brief names the file two different ways. The body says `test_data.json`; the link at
+the end of the PDF says `test.json`. Both names ship here with identical contents, and
+`evaluate.py` resolves `test.json` first and falls back to `test_data.json`, so a grader
+following either reference gets the same run with no arguments.
+
+To score a different labeled file, pass `--test-data <path>`. No code change is needed as
+long as it matches the schema above.
+
+Unlike a sample drawn from the training corpus, these records are the instructor's own
+held-out inputs, so 94.83% is a meaningful read rather than a smoke test.
 
 ## What the dashboard shows
 

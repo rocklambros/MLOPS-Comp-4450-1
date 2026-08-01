@@ -5,11 +5,12 @@ Course:  COMP 4450 MLOps
 Owner:   Rock Lambros <rock@rockcyber.com>
 Version: 1.0.0
 
-Reads test_data.json, sends every item to the running service's POST /predict, and
-prints a final accuracy score. The service must already be up:
+Reads the instructor's test.json (or test_data.json, same contents), sends every item
+to the running service's POST /predict, and prints a final accuracy score. The service
+must already be up:
 
-    make up            # start both containers
-    python evaluate.py # score the API over test_data.json
+    make run           # start both containers
+    python evaluate.py # score the API over the instructor's test set
 
 Requires only the `requests` library:
 
@@ -33,20 +34,34 @@ import requests
 HERE = Path(__file__).resolve().parent
 
 DEFAULT_API_URL = "http://localhost:8000"
-DEFAULT_TEST_DATA = HERE / "test_data.json"
 DEFAULT_TIMEOUT = 30
+
+# The brief names the test file two different ways: the body says `test_data.json`, the
+# link at the end of the PDF says `test.json`. Both ship here with identical contents
+# (the instructor's file), and either name resolves, so a grader following either
+# reference gets the same run.
+TEST_DATA_CANDIDATES = ("test.json", "test_data.json")
 
 # The two labels the model emits. Anything else in the test file is a data error, not
 # a model error, so it is reported separately rather than counted as a wrong answer.
 VALID_LABELS = {"positive", "negative"}
 
 
+def default_test_data() -> Path:
+    """First of the spec's two filenames that exists next to this script."""
+    for name in TEST_DATA_CANDIDATES:
+        candidate = HERE / name
+        if candidate.exists():
+            return candidate
+    return HERE / TEST_DATA_CANDIDATES[0]
+
+
 def load_test_data(path: Path) -> list[dict]:
     """Read and validate the test file.
 
     The spec's schema is [{"text": ..., "true_label": ...}, ...]. Validating up front
-    turns a malformed file into one clear message instead of 50 confusing request
-    failures.
+    turns a malformed file into one clear message instead of a flood of confusing
+    request failures.
     """
     try:
         records = json.loads(path.read_text(encoding="utf-8"))
@@ -72,7 +87,7 @@ def score_one(
     """Send one record to /predict. Returns (predicted_label, error_message).
 
     A per-item failure never aborts the run: the caller tallies errors and reports them
-    alongside the score, so one bad row does not hide the other 49 results.
+    alongside the score, so one bad row does not hide the rest of the results.
     """
     payload = {"text": record["text"]}
     if send_feedback and record["true_label"] in VALID_LABELS:
@@ -104,7 +119,10 @@ def main(argv: list[str]) -> int:
     )
     parser.add_argument("--api-url", default=DEFAULT_API_URL, help=f"default: {DEFAULT_API_URL}")
     parser.add_argument(
-        "--test-data", type=Path, default=DEFAULT_TEST_DATA, help="default: ./test_data.json"
+        "--test-data",
+        type=Path,
+        default=None,
+        help="default: ./test.json, falling back to ./test_data.json",
     )
     parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT, help="per-request seconds")
     parser.add_argument(
@@ -115,19 +133,20 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv[1:])
 
     api_url = args.api_url.rstrip("/")
-    records = load_test_data(args.test_data)
+    test_data_path = args.test_data or default_test_data()
+    records = load_test_data(test_data_path)
 
-    # Fail fast with an actionable message rather than 50 identical connection errors.
+    # Fail fast with an actionable message rather than N identical connection errors.
     try:
         health = requests.get(f"{api_url}/health", timeout=5)
         health.raise_for_status()
     except requests.RequestException as exc:
         print(f"error: cannot reach the API at {api_url} ({exc})", file=sys.stderr)
-        print("hint: start the stack with `make up`, then re-run.", file=sys.stderr)
+        print("hint: start the stack with `make run`, then re-run.", file=sys.stderr)
         return 2
 
     print(f"Evaluating {len(records)} records against {api_url}/predict")
-    print(f"Test data: {args.test_data}")
+    print(f"Test data: {test_data_path.name} ({len(records)} records)")
     print()
 
     pairs: list[tuple[str, str]] = []
