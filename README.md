@@ -24,10 +24,10 @@ Folders are named by course week, not by assignment number, because weeks 4 and 
 | Folder | Week | Assignment | Topic | Status |
 |---|---|---|---|---|
 | `assignments/hw1` | 1 | 1 | Streamlit sentiment-analysis app | built |
-| `assignments/hw2` | 2 | 2 | Docker packaging | spec only |
-| `assignments/hw3` | 3 | 3 | FastAPI backend | spec only |
+| `assignments/hw2` | 2 | 2 | Docker packaging | built |
+| `assignments/hw3` | 3 | 3 | FastAPI backend | built |
 | `assignments/hw5` | 5 | 4 | AWS compute (EC2, Lambda) | spec only |
-| `assignments/hw7` | 7 | 5 | Model monitoring | spec only |
+| `assignments/hw7` | 7 | 5 | Model monitoring | built |
 | `assignments/hw8` | 8 | 6 | CI/CD and testing | spec only |
 | `final-project/` | 9 | final | Production-grade MLOps system | spec only |
 

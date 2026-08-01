@@ -9,10 +9,10 @@ Folders are named by course **week**, so `hw5` holds the week-5 assignment. The 
 | Folder | Week | Assignment | Topic | Status |
 |---|---|---|---|---|
 | [`hw1`](hw1/) | 1 | 1 | Streamlit sentiment-analysis app | built |
-| [`hw2`](hw2/) | 2 | 2 | Docker packaging | spec only |
-| [`hw3`](hw3/) | 3 | 3 | FastAPI backend | spec only |
+| [`hw2`](hw2/) | 2 | 2 | Docker packaging | built |
+| [`hw3`](hw3/) | 3 | 3 | FastAPI backend | built |
 | [`hw5`](hw5/) | 5 | 4 | AWS compute (EC2, Lambda) | spec only |
-| [`hw7`](hw7/) | 7 | 5 | Model monitoring | spec only |
+| [`hw7`](hw7/) | 7 | 5 | Model monitoring | built |
 | [`hw8`](hw8/) | 8 | 6 | CI/CD and testing | spec only |
 
 The final project moved out of `assignments/` to its own top-level directory: [`../final-project/`](../final-project/).

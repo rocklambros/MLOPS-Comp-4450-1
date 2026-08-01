@@ -3,6 +3,11 @@ venv/
 __pycache__/
 *.pyc
 .pytest_cache/
+# Tests and the .in source of the lockfile are build-time-only; the image ships
+# main.py, the model, and the hash-pinned requirements.txt.
+tests/
+conftest.py
+requirements.in
 *.md
 .gitignore
 .dockerignore

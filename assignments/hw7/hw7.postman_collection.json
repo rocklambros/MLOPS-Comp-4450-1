@@ -1,0 +1,220 @@
+{
+  "info": {
+    "name": "HW7 Sentiment Monitoring API",
+    "description": "COMP 4450 Assignment 5. Drives POST /predict on the FastAPI container so the shared-volume log fills and the Streamlit dashboard has data to plot. Start the stack with `make run`, then Run Collection. Each request asserts its own expected status, so a green run is evidence the API behaves as documented.\n\nSet {{baseUrl}} if the API is not on http://localhost:8000.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["health"]
+        },
+        "description": "Liveness check. Stays 200 even when the model fails to load, which is the documented degraded mode."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('status is ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "predict - positive, with feedback",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"text\": \"One of the best films I have seen in years.\",\n  \"true_sentiment\": \"positive\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/predict",
+          "host": ["{{baseUrl}}"],
+          "path": ["predict"]
+        },
+        "description": "The main path. Supplying true_sentiment is the feedback the assignment's dashboard uses to compute live accuracy and precision."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "const b = pm.response.json();",
+              "pm.test('logged', () => pm.expect(b.logged).to.be.true);",
+              "pm.test('feedback echoed', () => pm.expect(b.true_sentiment).to.eql('positive'));",
+              "pm.test('predicts a known label', () => pm.expect(['positive','negative']).to.include(b.predicted_sentiment));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "predict - negative, with feedback",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"text\": \"A boring, painful waste of two hours. The acting was wooden.\",\n  \"true_sentiment\": \"negative\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/predict",
+          "host": ["{{baseUrl}}"],
+          "path": ["predict"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('feedback echoed', () => pm.expect(pm.response.json().true_sentiment).to.eql('negative'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "predict - no feedback (optional field omitted)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"text\": \"It was fine, nothing special.\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/predict",
+          "host": ["{{baseUrl}}"],
+          "path": ["predict"]
+        },
+        "description": "Feedback is optional. The request still succeeds and the log line still carries true_sentiment, as null, so the dashboard's parser sees the key on every row."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('feedback is null', () => pm.expect(pm.response.json().true_sentiment).to.be.null);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "predict - invalid feedback value (422)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"text\": \"ok\",\n  \"true_sentiment\": \"maybe\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/predict",
+          "host": ["{{baseUrl}}"],
+          "path": ["predict"]
+        },
+        "description": "Only 'positive' and 'negative' are accepted, so a junk label is rejected before it can corrupt the accuracy chart."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": ["pm.test('422 Unprocessable', () => pm.response.to.have.status(422));"]
+          }
+        }
+      ]
+    },
+    {
+      "name": "predict - non-finite float (422, not 500)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"text\": \"ok\",\n  \"true_sentiment\": NaN\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/predict",
+          "host": ["{{baseUrl}}"],
+          "path": ["predict"]
+        },
+        "description": "NaN is accepted by lenient JSON parsers. Without a custom handler FastAPI echoes it into the 422 body, Starlette renders with allow_nan=false, and the 422 becomes a 500. This asserts it stays 422."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('422, not 500', () => pm.response.to.have.status(422));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "predict - oversized body (413)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"text\": \"{{bigText}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/predict",
+          "host": ["{{baseUrl}}"],
+          "path": ["predict"]
+        },
+        "description": "The raw body is capped at 1 MiB ahead of validation. Without the cap an unbounded request is a memory-amplification vector and one oversized call skews the dashboard's live length distribution."
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Build a body past the 1 MiB ceiling at send time so the collection stays small.",
+              "pm.variables.set('bigText', 'a'.repeat(1100000));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": ["pm.test('413 Payload Too Large', () => pm.response.to.have.status(413));"]
+          }
+        }
+      ]
+    }
+  ]
+}
