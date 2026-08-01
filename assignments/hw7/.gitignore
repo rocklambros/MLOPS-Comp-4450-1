@@ -16,6 +16,9 @@ venv/
 logs/
 prediction_logs.json
 
-# Note: monitoring/IMDB Dataset.csv IS tracked (it ships in the image as the drift
-# reference, re-included in the repo-root .gitignore). The root *.csv rule keeps any
-# other stray dataset copy out.
+# Reference distribution: monitoring/reference_stats.json (11 KB, tracked) is the
+# drift reference that ships in the dashboard image. The raw 63 MB "IMDB Dataset.csv"
+# is deliberately NOT tracked here; a local copy dropped in for regeneration stays
+# ignored by the repo-root *.csv rule. monitoring/imdb_sample.csv is re-included at
+# the repo root as the documented fallback.
+IMDB Dataset.csv
