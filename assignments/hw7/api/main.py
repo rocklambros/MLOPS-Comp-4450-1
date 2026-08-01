@@ -19,6 +19,7 @@ import logging
 import math
 import os
 import threading
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -72,7 +73,17 @@ def load_model():
         logger.warning("model file %s not found; /predict will 503", MODEL_PATH)
         return None
     try:
-        return joblib.load(MODEL_PATH)
+        with warnings.catch_warnings():
+            # Unpickling a scikit-learn Pipeline surfaces third-party deprecations as
+            # the numpy/scipy versions drift away from the ones the model was saved
+            # under (numpy 2.5, for one, deprecates in-place shape assignment). Those
+            # are advisory. Under escalated warnings (pytest -W error, or
+            # PYTHONWARNINGS=error) they would raise, get caught below, and take the
+            # whole service to 503 over a message that changes nothing about the
+            # model. Pin the filter back to default here so only a genuine load
+            # failure degrades the service.
+            warnings.simplefilter("default")
+            return joblib.load(MODEL_PATH)
     except Exception as exc:  # noqa: BLE001 - degrade on any unpickling/version error
         logger.warning("failed to load model %s: %s; /predict will 503", MODEL_PATH, exc)
         return None
