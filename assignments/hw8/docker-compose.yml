@@ -1,0 +1,47 @@
+# docker-compose.yml - two-service model-monitoring stack (Assignment 5, hw7).
+# Course: COMP 4450 MLOps   Owner: Rock Lambros <rock@rockcyber.com>   Version: 1.0.0
+#
+# api        FastAPI prediction service, logs each call to the shared volume (8000).
+# dashboard  Streamlit monitoring dashboard, reads the same volume (8501).
+#
+# Both services join the user-defined network "sentiment-net", so the dashboard
+# resolves the API by service name ("api"). The named volume "prediction-logs"
+# persists the log and shares it between the two containers at /logs.
+
+services:
+  api:
+    build: ./api
+    image: sentiment-monitor-api
+    container_name: sentiment-monitor-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - prediction-logs:/logs
+    networks:
+      - sentiment-net
+    restart: unless-stopped
+
+  dashboard:
+    build: ./monitoring
+    image: sentiment-monitor-dashboard
+    container_name: sentiment-monitor-dashboard
+    ports:
+      - "8501:8501"
+    volumes:
+      - prediction-logs:/logs
+    environment:
+      # Reach the API by service name on the shared network for the health badge.
+      - API_URL=http://api:8000
+    depends_on:
+      - api
+    networks:
+      - sentiment-net
+    restart: unless-stopped
+
+volumes:
+  prediction-logs:
+    name: prediction-logs
+
+networks:
+  sentiment-net:
+    name: sentiment-net

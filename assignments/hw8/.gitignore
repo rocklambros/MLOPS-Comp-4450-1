@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Environment files
+.env
+*.env
+
+# Runtime prediction logs live in the shared Docker volume, never committed. Local
+# dev that points LOG_PATH at ./logs lands here too.
+logs/
+prediction_logs.json
+
+# Reference distribution: monitoring/reference_stats.json (11 KB, tracked) is the
+# drift reference that ships in the dashboard image. The raw 63 MB "IMDB Dataset.csv"
+# is deliberately NOT tracked here; a local copy dropped in for regeneration stays
+# ignored by the repo-root *.csv rule. monitoring/imdb_sample.csv is re-included at
+# the repo root as the documented fallback.
+IMDB Dataset.csv

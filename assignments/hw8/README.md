@@ -1,23 +1,480 @@
-# Homework 4
+# Model Monitoring (Assignment 5)
 
-Fill these fields in when the assignment drops (modules release the day of class).
+A two-container monitoring system for the COMP 4450 sentiment service. A FastAPI
+prediction service logs every request to a shared Docker volume, and a Streamlit
+dashboard reads that log to watch for data drift, target drift, and accuracy decay.
+Same model as Assignments 1 and 3 (`sentiment_model.pkl`, TF-IDF + Multinomial Naive
+Bayes). The request logging, the monitoring dashboard, and the evaluation script are
+new this week.
 
-- Week:
-- Topic:
-- Released:
-- Due: end of day Tuesday, one week after release
-- Partner: solo, or name of pair partner
+- Week: 7
+- Topic: model monitoring (data drift, target drift, live accuracy and precision)
+- Partner: solo
+- Points: 15 per the assignment brief
+- Due: `8/11/2026 11:59 PM` per the brief header
 
-## Objective
+---
 
-State what the assignment asks for in one or two sentences.
-
-## How to run
+## For the grader: evaluate this in four commands
 
 ```bash
-# setup and run commands go here
+cd assignments/hw7
+make run          # builds both images, creates the volume + network, starts both containers
+make evaluate     # scores the API over the instructor's 174-record test set, prints accuracy
+open http://localhost:8501     # the monitoring dashboard
+make clean        # stops containers, removes the volume and network, drops both images
 ```
 
-## Notes
+`make evaluate` needs the `requests` library on the host: `pip install -r requirements-dev.txt`.
+If those deps live in a virtualenv, point the Makefile at it:
+`PYTHON=.venv/bin/python make evaluate`. Everything else runs in Docker.
 
-Design decisions, blockers, and references used.
+Expected output from `make evaluate` on a clean stack:
+
+```
+====================================================
+Scored          : 174 of 174
+Correct         : 165
+ACCURACY        : 94.83%
+Precision (neg) : 94.32%
+Precision (pos) : 95.35%
+Predicted mix   : {'positive': 86, 'negative': 88}
+====================================================
+```
+
+That is the instructor's `test.json`, all 174 records, scored against the running
+container. Those 174 calls also populate the dashboard, so after `make evaluate` the
+accuracy panel and all three plots have real data. No separate seeding step is
+required.
+
+## Requirement-to-evidence map
+
+Every line of the assignment brief, where it is implemented, and how to check it.
+
+| # | Requirement (from the brief) | Where | How to verify |
+|---|---|---|---|
+| 1 | FastAPI app with `POST /predict` | `api/main.py:271` | `curl -X POST localhost:8000/predict -H 'Content-Type: application/json' -d '{"text":"great"}'` |
+| 2 | Every request logs a JSON object to `prediction_logs.json` in a `/logs` directory | `api/main.py:253` (`append_log`) | `docker compose exec dashboard cat /logs/prediction_logs.json` |
+| 3 | Each log entry is a new line | `api/main.py:262` (one `json.dumps` + `\n` per call) | `test_each_request_appends_one_new_line` |
+| 4 | Log carries `timestamp`, `request_text`, `predicted_sentiment`, `true_sentiment` | `api/main.py:278-282` | `test_predict_logs_exactly_the_four_required_fields` (exact-set equality) |
+| 5 | Streamlit app reads and parses the log from the shared `/logs` | `monitoring/dashboard.py:63` (`load_logs`) | Dashboard header reads "Loaded N logged prediction(s)" |
+| 6 | Data drift: histogram of sentence lengths, `IMDB Dataset.csv` vs logged requests | `monitoring/dashboard.py:169-202` | Dashboard section 1. Reference provenance is proven below. |
+| 7 | Target drift: bar chart, predicted sentiments vs trained sentiments | `monitoring/dashboard.py:204-238` | Dashboard section 2 |
+| 8 | Accuracy **and precision** from all collected feedback | `monitoring/dashboard.py:240-323` | Dashboard section 3: live accuracy, precision (positive), precision (macro), per-class precision/recall |
+| 9 | **Alerting**: accuracy below 80% shows a prominent banner via `st.error()` | `monitoring/dashboard.py:266` | Drive accuracy under 80% and the red banner renders at the top of the page, above every chart |
+| 10 | `evaluate.py` in the project root | `evaluate.py` | `make evaluate` |
+| 11 | Reads the instructor's test file of `[{"text": ..., "true_label": ...}]` | `evaluate.py:59` (`load_test_data`), `evaluate.py:50` (name resolution) | `head -c 200 test.json` |
+| 12 | Loops each item, POSTs to `/predict`, prints a final accuracy score | `evaluate.py:157-186` | The `ACCURACY` line in the output above |
+| 13 | Two separate Dockerfiles: `api/Dockerfile` for FastAPI, `monitoring/Dockerfile` for Streamlit | both present, one per service | `make build` builds both, 0 warnings |
+| 14 | Makefile handles `build` | `Makefile:14` | `make build` |
+| 15 | Makefile handles `run` | `Makefile:19` | `make run`, both containers report Up |
+| 16 | Makefile handles `clean`, stopping containers and removing the network/volume | `Makefile:66` (`compose down -v` + `rmi`) | After `make clean`: containers 0, volume 0, network 0 |
+| 17 | README explains the multi-container architecture | ["System architecture"](#system-architecture) | Mermaid diagram plus the volume-vs-network explanation |
+| 18 | README gives step-by-step Makefile instructions to run the entire stack | ["Using the Makefile, step by step"](#using-the-makefile-step-by-step) | Steps 0 through 7, fresh clone to teardown |
+| 19 | README includes `curl` examples for the API | ["Driving the API from curl"](#driving-the-api-from-curl) | Copy-paste `/predict` and `/health` calls with expected responses |
+| 20 | README includes instructions for the `evaluate.py` script | ["Using evaluate.py"](#using-evaluatepy) | Install, run, all four flags, exit codes |
+
+## System architecture
+
+```mermaid
+flowchart TB
+    client["Postman / curl / evaluate.py"]
+
+    subgraph net["docker network: sentiment-net"]
+        api["<b>api</b> — FastAPI<br/>port 8000<br/>POST /predict · GET /health"]
+        dash["<b>dashboard</b> — Streamlit<br/>port 8501<br/>accuracy alert banner (top)<br/>data drift · target drift · accuracy + precision"]
+    end
+
+    vol[("<b>prediction-logs</b><br/>named volume<br/>mounted at /logs in both")]
+
+    client -->|"POST /predict<br/>{text, true_sentiment}"| api
+    api -->|"append one JSON line<br/>/logs/prediction_logs.json"| vol
+    vol -->|"read log"| dash
+    dash -.->|"GET http://api:8000/health<br/>(status badge)"| api
+```
+
+Two paths connect the services, and they carry different things:
+
+- The **volume** is how predictions reach the dashboard. The API appends, the dashboard
+  reads. This is the data path.
+- The **network** carries only the dashboard's best-effort health check, drawn as a
+  dashed line. It drives the API status badge and proves the two containers resolve each
+  other by service name.
+
+## Files
+
+```
+assignments/hw7/
+├── docker-compose.yml            two services, the shared volume, the shared network
+├── Makefile                      build · run · seed · evaluate · test · clean
+├── evaluate.py                   scores the running API, prints a final accuracy
+├── test.json                     instructor's test set, 174 rows (87 pos / 87 neg)
+├── test_data.json                identical copy, so both names the brief uses resolve
+├── pytest.ini                    warnings-as-errors across the whole suite
+├── requirements-dev.in           host-side test + eval deps (source)
+├── requirements-dev.txt          the same, compiled and hash-pinned
+├── hw7.postman_collection.json   7 requests, each asserting its own status
+├── README.md                     this file
+│
+├── api/                          the FastAPI prediction service
+│   ├── main.py                   POST /predict (logs every call) · GET /health
+│   ├── Dockerfile                python:3.13-slim (digest-pinned), non-root, /logs
+│   ├── sentiment_model.pkl       the Assignment 1 model, unchanged
+│   ├── requirements.in           serving stack (source)
+│   ├── requirements.txt          the same, compiled and hash-pinned
+│   ├── conftest.py               puts the app dir on sys.path for tests
+│   └── tests/
+│       └── test_api.py           21 tests pinning the graded logging contract
+│
+└── monitoring/                   the Streamlit monitoring dashboard
+    ├── dashboard.py              alert banner, data drift, target drift, accuracy
+    ├── reference_stats.py        drift reference: build · load · resolve
+    ├── reference_stats.json      the 11 KB reference that ships in the image
+    ├── imdb_sample.csv           200-row fallback if the artifact is ever absent
+    ├── Dockerfile                python:3.13-slim (digest-pinned), non-root, /logs
+    ├── requirements.in           streamlit + pandas + matplotlib + requests (source)
+    ├── requirements.txt          the same, compiled and hash-pinned
+    ├── conftest.py               puts the app dir on sys.path for tests
+    └── tests/
+        └── test_reference_stats.py   7 tests pinning reference equivalence
+```
+
+## Using the Makefile, step by step
+
+Running the entire stack from a fresh clone, in order.
+
+**Step 0. Prerequisites.** Docker Desktop running, and Python 3.13 on the host if you
+plan to use `make evaluate` or `make test`.
+
+```bash
+cd assignments/hw7
+docker --version        # any recent Docker with Compose v2
+```
+
+**Step 1. Build both images.** One image per service, from the two separate Dockerfiles.
+
+```bash
+make build
+```
+
+Builds `sentiment-monitor-api` from `api/Dockerfile` and `sentiment-monitor-dashboard`
+from `monitoring/Dockerfile`. Expect no warnings and no errors.
+
+**Step 2. Run the whole stack.** One command brings up both containers, the shared
+network, and the shared volume.
+
+```bash
+make run
+```
+
+This creates the `prediction-logs` named volume and the `sentiment-net` network, starts
+both containers detached, and prints the two URLs. It rebuilds first if anything changed,
+so you can skip step 1 and start here. Confirm both are up:
+
+```bash
+docker compose ps          # api and dashboard both "Up"
+curl http://localhost:8000/health
+# {"status":"ok"}
+```
+
+**Step 3. Send traffic.** Either drive it by hand with curl or Postman (see the next
+section), or use the shortcut:
+
+```bash
+make seed        # five labeled predictions, enough to populate every chart
+```
+
+**Step 4. Score the API.** Runs `evaluate.py` over the instructor's 174-record test set
+and prints a final accuracy. Needs `requests` on the host.
+
+```bash
+pip install -r requirements-dev.txt
+make evaluate
+```
+
+**Step 5. Open the dashboard.** <http://localhost:8501>. The three monitoring plots and
+the accuracy alert banner are populated by whatever traffic steps 3 and 4 produced. API
+docs are at <http://localhost:8000/docs>.
+
+**Step 6. Run the tests (optional).**
+
+```bash
+make test        # 28 passed
+```
+
+**Step 7. Tear everything down.** Stops both containers and removes the network and the
+volume, which wipes the logs.
+
+```bash
+make clean
+```
+
+Use `make down` instead if you want to stop the containers but keep the logged
+predictions for the next run.
+
+### Target reference
+
+| Command | What it does |
+|---|---|
+| `make build` | Builds `sentiment-monitor-api` and `sentiment-monitor-dashboard` from the two Dockerfiles. |
+| `make run` | Builds if needed, creates the `prediction-logs` volume and `sentiment-net` network, starts both containers detached, prints the two URLs. |
+| `make seed` | Sends five labeled predictions so the charts have data without running the full evaluation. |
+| `make evaluate` | Runs `evaluate.py` against `http://localhost:8000` over all 174 rows of the instructor's `test.json` and prints the final accuracy. |
+| `make test` | Runs all 28 tests (21 API + 7 reference). Needs `pip install -r requirements-dev.txt`. |
+| `make logs` | Follows both containers' logs. |
+| `make down` | Stops the containers, keeps the volume so logs persist. |
+| `make clean` | Stops containers, removes the volume **and** the network, drops both images. |
+
+`up` is kept as an alias for `run` so older references keep working.
+
+## Driving the API from curl
+
+`POST /predict` takes the review text and an optional ground-truth label:
+
+```bash
+# With feedback (drives the accuracy and precision panel)
+curl -X POST http://localhost:8000/predict \
+  -H 'Content-Type: application/json' \
+  -d '{"text": "One of the best films I have seen in years.", "true_sentiment": "positive"}'
+# {"timestamp":"2026-...","predicted_sentiment":"positive","true_sentiment":"positive","logged":true}
+
+# Without feedback (still logged, not counted in accuracy)
+curl -X POST http://localhost:8000/predict \
+  -H 'Content-Type: application/json' \
+  -d '{"text": "It was fine, nothing special."}'
+
+# Liveness
+curl http://localhost:8000/health
+# {"status":"ok"}
+```
+
+Each call appends one line to `/logs/prediction_logs.json`:
+
+```json
+{"timestamp":"2026-08-01T14:59:22.876856+00:00","request_text":"One of the best films I have seen in years.","predicted_sentiment":"positive","true_sentiment":"positive"}
+```
+
+Interactive docs are at <http://localhost:8000/docs>. A Postman collection covering all
+seven cases below ships as `hw7.postman_collection.json`; import it and choose Run
+Collection, and every request asserts its own expected status.
+
+### Validation behavior
+
+| Request | Response |
+|---|---|
+| Valid text, with or without `true_sentiment` | 200 |
+| `true_sentiment` in any case or with surrounding spaces | 200, normalized to lowercase |
+| Blank text, whitespace-only text, missing `text`, non-string `text` | 422 |
+| Unknown `true_sentiment` value | 422 |
+| Any extra field (`extra="forbid"`) | 422 |
+| Non-finite JSON float (`NaN`, `Infinity`) | 422 |
+| `text` longer than 20,000 characters | 422 |
+| Raw body larger than 1 MiB | 413 |
+| Model file missing or unreadable | 503 from `/predict`, `/health` stays 200 |
+
+Rejected requests never reach the log, so the dashboard only ever plots real traffic.
+
+## Using evaluate.py
+
+The script reads a labeled JSON file, sends each `text` to the running service, and
+prints a final accuracy score along with per-class precision.
+
+```bash
+pip install -r requirements-dev.txt   # only needs `requests`
+make run                              # the API must be up first
+make evaluate                         # or: python evaluate.py
+```
+
+Options:
+
+```bash
+python evaluate.py --api-url http://localhost:8000   # point at a different host
+python evaluate.py --test-data other_data.json       # use a different labeled file
+python evaluate.py --no-feedback                     # send text only, skip dashboard feedback
+python evaluate.py --timeout 60                      # per-request timeout in seconds
+```
+
+By default each request also carries its ground-truth label as `true_sentiment`, so an
+evaluation run doubles as feedback traffic and the dashboard's accuracy panel fills from
+it. The label never reaches the model: `/predict` classifies `text` alone and logs
+`true_sentiment` untouched, so there is no leakage into the prediction. Pass
+`--no-feedback` to send the text only.
+
+The script exits 0 on a clean run, 1 if any record failed to score, and 2 if the API is
+unreachable. A single failed request is reported and does not abort the run.
+
+### About the test file
+
+This ships the **instructor's `test.json`** verbatim: 174 records, 87 positive and 87
+negative, schema `[{"text": ..., "true_label": ...}]`.
+
+The brief names the file two different ways. The body says `test_data.json`; the link at
+the end of the PDF says `test.json`. Both names ship here with identical contents, and
+`evaluate.py` resolves `test.json` first and falls back to `test_data.json`, so a grader
+following either reference gets the same run with no arguments.
+
+To score a different labeled file, pass `--test-data <path>`. No code change is needed as
+long as it matches the schema above.
+
+Unlike a sample drawn from the training corpus, these records are the instructor's own
+held-out inputs, so 94.83% is a meaningful read rather than a smoke test.
+
+## What the dashboard shows
+
+- **Accuracy alert banner.** Rendered at the very top of the page, above every chart,
+  whenever live accuracy falls below 80%. Implemented with `st.error()` as the brief
+  requires, using a slot reserved before the charts so the banner appears at the top even
+  though accuracy is computed further down. When accuracy is at or above 80% the same
+  slot shows a green confirmation instead of staying blank.
+- **Data drift.** Overlaid density histograms of review length in words, training data vs
+  logged live requests, with the shared x-range clipped at the 99th percentile so a few
+  long reviews do not flatten the chart.
+- **Target drift.** Grouped bar chart of the predicted-sentiment mix in the logs against
+  the trained label balance (IMDB is 25,000 / 25,000).
+- **Accuracy, precision, and feedback.** Live accuracy, precision for the positive class,
+  macro precision, feedback coverage, a per-class precision/recall/accuracy table, and a
+  predicted-versus-true count table. All computed over the labeled subset only.
+
+Precision for a class the model never predicted is reported as `n/a`, not `0%`. An empty
+denominator makes precision undefined, and printing zero would claim the model got every
+such prediction wrong when it made none at all.
+
+## Drift-reference provenance
+
+The dashboard's drift reference is `monitoring/reference_stats.json` (11 KB), a
+precomputed length-count and sentiment-count map. The raw 63 MB `IMDB Dataset.csv` is
+**not** committed in this folder, because shipping 63 MB to carry two aggregates puts a
+permanent blob in git history for 300x more data than the charts read.
+
+The substitution is verifiable, not asserted:
+
+```bash
+# The artifact reproduces exactly from the real dataset.
+shasum -a 256 "../hw3/IMDB Dataset.csv"
+# dfc447764f82be365fa9c2beef4e8df89d3919e3da95f5088004797d79695aa2
+
+cd monitoring
+python reference_stats.py "../../hw3/IMDB Dataset.csv" /tmp/check.json
+python -c "import json; a=json.load(open('reference_stats.json')); b=json.load(open('/tmp/check.json')); print('identical:', a==b)"
+# identical: True
+```
+
+`reference_stats.json` records `reference_rows: 50000` and `sentiment_counts:
+{positive: 25000, negative: 25000}`. The seven tests in
+`monitoring/tests/test_reference_stats.py` pin that the reconstructed frame has the same
+length multiset and the same sentiment proportions as reading the CSV directly, so no
+chart moves. `imdb_sample.csv` (200 balanced rows, seed 4450) is the fallback used only
+if the artifact is absent. Nothing is fabricated.
+
+This reverses an earlier decision to commit the full CSV. The reversal is recorded in
+`../../COURSE_STATE.md`.
+
+## Running the tests
+
+```bash
+pip install -r requirements-dev.txt
+make test
+# 28 passed
+```
+
+`pytest.ini` treats warnings as errors, with one allowlisted third-party deprecation
+(starlette's TestClient httpx warning). The 21 API tests pin the graded logging contract
+field by field, the newline-delimited format, every 422 path, the 413 ceiling, and the
+503 degraded mode. The 7 monitoring tests pin the reference-artifact equivalence.
+
+## The manual Docker path (what Compose does, for hw8)
+
+hw8 runs these by hand on an EC2 host, so here is the equivalent without Compose:
+
+```bash
+docker network create sentiment-net
+docker volume create prediction-logs
+
+docker build -t sentiment-monitor-api ./api
+docker build -t sentiment-monitor-dashboard ./monitoring
+
+docker run -d --name sentiment-monitor-api \
+  --network sentiment-net -p 8000:8000 \
+  -v prediction-logs:/logs sentiment-monitor-api
+
+docker run -d --name sentiment-monitor-dashboard \
+  --network sentiment-net -p 8501:8501 \
+  -v prediction-logs:/logs -e API_URL=http://sentiment-monitor-api:8000 \
+  sentiment-monitor-dashboard
+```
+
+With raw `docker run` the service DNS name is the `--name`, so the dashboard points at
+`http://sentiment-monitor-api:8000`. Under Compose it is the service name, `http://api:8000`.
+
+## Local dev without Docker
+
+```bash
+# API
+cd api
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+LOG_PATH=../logs/prediction_logs.json uvicorn main:app --reload   # :8000
+
+# Dashboard (second shell)
+cd monitoring
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+LOG_PATH=../logs/prediction_logs.json API_URL=http://localhost:8000 \
+  streamlit run dashboard.py                                      # :8501
+```
+
+`LOG_PATH` points both processes at the same file in place of the shared volume. Set
+`REFERENCE_DATA_PATH` to point the dashboard at a different reference file.
+
+## Design decisions
+
+- **Ports.** FastAPI on 8000, Streamlit on 8501, consistent with hw3 and lined up for the
+  hw8 EC2 security group.
+- **`true_sentiment` is optional, but always logged.** Real feedback is sporadic, so a
+  `/predict` call without it still succeeds and logs the field as `null`. The key is
+  present in every log line, never absent, so each entry carries it as the brief asks.
+  Accuracy and precision are computed over the labeled subset. Including the field
+  (Postman does) always works, so this is the more permissive choice against an automated
+  check.
+- **"Sentence length" = word count.** The brief says "sentence lengths" without a unit.
+  Word count is the standard text-length feature; the chart axis is labeled "words" so the
+  choice is explicit.
+- **Precision without a qualifier means the positive class.** That is the binary
+  convention. Macro precision and both per-class values are shown alongside it so nothing
+  is hidden behind the single headline number.
+- **Alert threshold is a named constant.** `ACCURACY_ALERT_THRESHOLD = 0.80` in
+  `dashboard.py`, so the banner, the caption, and the docs cannot drift apart. The
+  comparison is strict (`accuracy < 0.80`), matching "drops below 80%": exactly 80% does
+  not alert.
+- **Request bounds.** `text` is capped at 20,000 characters and the raw body at 1 MiB.
+  Beyond the resource argument, the cap protects the monitoring signal itself: without it
+  a single 400,000-word request moves the dashboard's "mean length, live" metric from 231
+  words to 40,005 while the histogram still looks normal, which is a wrong number next to
+  a plausible chart.
+- **Non-finite floats return 422.** FastAPI echoes the offending input into the 422 body
+  and Starlette renders JSON with `allow_nan=False`, so an uncoerced `NaN` turned the 422
+  into a 500. `_json_safe` coerces it. Carried over from Assignment 3.
+- **Volume permissions.** Both images run as a non-root user (uid 1000) and pre-create
+  `/logs` owned by that user. An empty named volume inherits the mount point's ownership
+  on first mount, so the non-root API can write. This is the one real Docker gotcha here.
+- **Supply chain.** Both runtime stacks and the dev stack are hash-pinned with
+  `uv pip compile --generate-hashes --universal`, and both base images are digest-pinned
+  to `python:3.13-slim@sha256:6771159c...` (resolved 2026-08-01). A tag is a moving
+  target; a rebuild months from now would otherwise pull a different base than the one
+  tested. Regenerate a lockfile from its `.in` file, never by hand.
+- **Names.** Images `sentiment-monitor-api` / `sentiment-monitor-dashboard`, volume
+  `prediction-logs`, network `sentiment-net`. The brief does not pin these, so they are
+  local choices, flagged here and kept consistent across the compose file, the Makefile,
+  and this README.
+- **Base image `python:3.13-slim`.** Same documented deviation as Assignments 2 and 3: the
+  pinned stack needs Python 3.10+ and the model was pickled under 3.13, so a 3.9 image
+  cannot install the dependencies or load the model.
+
+## Note to the instructor
+
+This runs on `python:3.13-slim` rather than the `python:3.9-slim` example in the brief,
+for the same reason as Assignments 2 and 3: the pinned stack (pandas 3.0.3,
+scikit-learn 1.9.0) requires Python 3.10 or newer, and the Assignment 1 model was
+serialized under Python 3.13, so a 3.9 image cannot install the dependencies or load the
+model. If a 3.9 base is a hard requirement, I will re-pin the stack to 3.9-compatible
+versions and retrain the model to match.
