@@ -1,35 +1,54 @@
-# Model Monitoring (Assignment 5)
+# CI/CD, Testing, and EC2 Deployment (Assignment 6)
 
-A two-container monitoring system for the COMP 4450 sentiment service. A FastAPI
-prediction service logs every request to a shared Docker volume, and a Streamlit
-dashboard reads that log to watch for data drift, target drift, and accuracy decay.
-Same model as Assignments 1 and 3 (`sentiment_model.pkl`, TF-IDF + Multinomial Naive
-Bayes). The request logging, the monitoring dashboard, and the evaluation script are
-new this week.
+The final assignment: the FastAPI service and Streamlit dashboard from Assignment 5
+(hw7) get a test suite, an automated GitHub Actions pipeline, and a manual deployment
+to a live AWS EC2 host. Same model as Assignments 1, 3, and 5
+(`sentiment_model.pkl`, TF-IDF + Multinomial Naive Bayes). Nothing in the served
+application changed this week. The additions are the tests, the workflow, and this
+operational manual.
 
-- Week: 7
-- Topic: model monitoring (data drift, target drift, live accuracy and precision)
+- Week: 8
+- Topic: CI/CD (GitHub Actions), testing, and manual EC2 deployment
 - Partner: solo
-- Points: 15 per the assignment brief
-- Due: `8/11/2026 11:59 PM` per the brief header
+- Points: 17 per the assignment brief
+- Due: `8/18/2026 11:59 PM` per the brief header
+
+Per the brief's own submission instructions, grading of Part 3 works by replication,
+not observation: the instructor will not check a live EC2 instance, since it will not
+persist once closed. Instead the "Manual deployment to EC2" section below is written
+to be followed verbatim, by a reader with a fresh key pair and nothing else, on the
+instructor's own instance.
 
 ---
 
-## For the grader: evaluate this in four commands
+## For the grader
+
+Two independent checks. The automated one runs on every pull request. The local one
+runs the same stack hw7 shipped, now with 37 tests behind it.
 
 ```bash
-cd assignments/hw7
-make run          # builds both images, creates the volume + network, starts both containers
-make evaluate     # scores the API over the instructor's 174-record test set, prints accuracy
-open http://localhost:8501     # the monitoring dashboard
-make clean        # stops containers, removes the volume and network, drops both images
+cd assignments/hw8
+python3 -m venv .venv && .venv/bin/pip install --require-hashes -r requirements.txt
+.venv/bin/python -m pytest -q      # 37 passed
+make build
+make run
+curl http://localhost:8000/health  # {"status":"ok"}
+.venv/bin/python evaluate.py       # scores the API over the instructor's 174-record test set
+open http://localhost:8501         # the monitoring dashboard
+make clean
 ```
 
-`make evaluate` needs the `requests` library on the host: `pip install -r requirements-dev.txt`.
-If those deps live in a virtualenv, point the Makefile at it:
-`PYTHON=.venv/bin/python make evaluate`. Everything else runs in Docker.
+CI runs automatically on the pull request from `dev` to `main`. A throwaway pull
+request against this exact commit history confirmed the workflow end to end:
+[run 30729295834](https://github.com/rocklambros/MLOPS-Comp-4450-1/actions/runs/30729295834),
+job `lint and test`, conclusion `success`. Ruff reported `All checks passed!`. Pytest
+reported `37 passed in 5.34s` on the `ubuntu-latest` runner, matching the 37 tests
+collected locally on macOS arm64 (`.venv/bin/python -m pytest --collect-only -q` →
+`37 tests collected`: 24 in `api/test_api.py`, 6 in `monitoring/test_dashboard.py`, 7
+in `monitoring/test_reference_stats.py`).
 
-Expected output from `make evaluate` on a clean stack:
+Running `evaluate.py` for this README against a freshly built local stack, on
+2026-08-01, over the instructor's `test.json` (174 rows, 87 positive / 87 negative):
 
 ```
 ====================================================
@@ -42,89 +61,84 @@ Predicted mix   : {'positive': 86, 'negative': 88}
 ====================================================
 ```
 
-That is the instructor's `test.json`, all 174 records, scored against the running
-container. Those 174 calls also populate the dashboard, so after `make evaluate` the
-accuracy panel and all three plots have real data. No separate seeding step is
-required.
-
-## Requirement-to-evidence map
-
-Every line of the assignment brief, where it is implemented, and how to check it.
-
-| # | Requirement (from the brief) | Where | How to verify |
-|---|---|---|---|
-| 1 | FastAPI app with `POST /predict` | `api/main.py:271` | `curl -X POST localhost:8000/predict -H 'Content-Type: application/json' -d '{"text":"great"}'` |
-| 2 | Every request logs a JSON object to `prediction_logs.json` in a `/logs` directory | `api/main.py:253` (`append_log`) | `docker compose exec dashboard cat /logs/prediction_logs.json` |
-| 3 | Each log entry is a new line | `api/main.py:262` (one `json.dumps` + `\n` per call) | `test_each_request_appends_one_new_line` |
-| 4 | Log carries `timestamp`, `request_text`, `predicted_sentiment`, `true_sentiment` | `api/main.py:278-282` | `test_predict_logs_exactly_the_four_required_fields` (exact-set equality) |
-| 5 | Streamlit app reads and parses the log from the shared `/logs` | `monitoring/dashboard.py:63` (`load_logs`) | Dashboard header reads "Loaded N logged prediction(s)" |
-| 6 | Data drift: histogram of sentence lengths, `IMDB Dataset.csv` vs logged requests | `monitoring/dashboard.py:169-202` | Dashboard section 1. Reference provenance is proven below. |
-| 7 | Target drift: bar chart, predicted sentiments vs trained sentiments | `monitoring/dashboard.py:204-238` | Dashboard section 2 |
-| 8 | Accuracy **and precision** from all collected feedback | `monitoring/dashboard.py:240-323` | Dashboard section 3: live accuracy, precision (positive), precision (macro), per-class precision/recall |
-| 9 | **Alerting**: accuracy below 80% shows a prominent banner via `st.error()` | `monitoring/dashboard.py:266` | Drive accuracy under 80% and the red banner renders at the top of the page, above every chart |
-| 10 | `evaluate.py` in the project root | `evaluate.py` | `make evaluate` |
-| 11 | Reads the instructor's test file of `[{"text": ..., "true_label": ...}]` | `evaluate.py:59` (`load_test_data`), `evaluate.py:50` (name resolution) | `head -c 200 test.json` |
-| 12 | Loops each item, POSTs to `/predict`, prints a final accuracy score | `evaluate.py:157-186` | The `ACCURACY` line in the output above |
-| 13 | Two separate Dockerfiles: `api/Dockerfile` for FastAPI, `monitoring/Dockerfile` for Streamlit | both present, one per service | `make build` builds both, 0 warnings |
-| 14 | Makefile handles `build` | `Makefile:14` | `make build` |
-| 15 | Makefile handles `run` | `Makefile:19` | `make run`, both containers report Up |
-| 16 | Makefile handles `clean`, stopping containers and removing the network/volume | `Makefile:66` (`compose down -v` + `rmi`) | After `make clean`: containers 0, volume 0, network 0 |
-| 17 | README explains the multi-container architecture | ["System architecture"](#system-architecture) | Mermaid diagram plus the volume-vs-network explanation |
-| 18 | README gives step-by-step Makefile instructions to run the entire stack | ["Using the Makefile, step by step"](#using-the-makefile-step-by-step) | Steps 0 through 7, fresh clone to teardown |
-| 19 | README includes `curl` examples for the API | ["Driving the API from curl"](#driving-the-api-from-curl) | Copy-paste `/predict` and `/health` calls with expected responses |
-| 20 | README includes instructions for the `evaluate.py` script | ["Using evaluate.py"](#using-evaluatepy) | Install, run, all four flags, exit codes |
+This is a fresh run performed for this task, not a figure carried over from hw7's
+README. It reads the same because it is the same model, the same test set, and the
+same `/predict` code path hw7 shipped. hw8 adds tests and deployment tooling around
+that path without changing it.
 
 ## System architecture
 
 ```mermaid
 flowchart TB
-    client["Postman / curl / evaluate.py"]
+    dev["developer laptop<br/>git push -&gt; dev branch"]
+    pr["GitHub: pull request<br/>dev -&gt; main"]
 
-    subgraph net["docker network: sentiment-net"]
-        api["<b>api</b> — FastAPI<br/>port 8000<br/>POST /predict · GET /health"]
-        dash["<b>dashboard</b> — Streamlit<br/>port 8501<br/>accuracy alert banner (top)<br/>data drift · target drift · accuracy + precision"]
+    subgraph ci["CI: GitHub Actions, ubuntu-latest runner<br/>job: lint and test"]
+        direction LR
+        co["checkout"] --> setup["set up Python 3.13"] --> inst["pip install<br/>requirements.txt"] --> lint["ruff check ."] --> test["pytest -q<br/>37 tests"]
     end
 
-    vol[("<b>prediction-logs</b><br/>named volume<br/>mounted at /logs in both")]
+    subgraph ec2["EC2 host: t2.micro, Ubuntu 22.04<br/>manual deploy, documented below, not automated"]
+        client["Postman / curl / evaluate.py"]
 
-    client -->|"POST /predict<br/>{text, true_sentiment}"| api
-    api -->|"append one JSON line<br/>/logs/prediction_logs.json"| vol
-    vol -->|"read log"| dash
-    dash -.->|"GET http://api:8000/health<br/>(status badge)"| api
+        subgraph net["docker network: sentiment-net"]
+            api["<b>api</b> - FastAPI<br/>port 8000<br/>POST /predict &middot; GET /health"]
+            dash["<b>dashboard</b> - Streamlit<br/>port 8501<br/>accuracy alert banner (top)<br/>data drift &middot; target drift &middot; accuracy + precision"]
+        end
+
+        vol[("<b>prediction-logs</b><br/>named volume<br/>mounted at /logs in both")]
+
+        client -->|"POST /predict<br/>{text, true_sentiment}"| api
+        api -->|"append one JSON line<br/>/logs/prediction_logs.json"| vol
+        vol -->|"read log"| dash
+        dash -.->|"GET http://api:8000/health<br/>(status badge)"| api
+    end
+
+    dev --> pr --> co
+    test -.->|"green check gates the merge<br/>no auto-deploy step"| pr
+    pr -.->|"manual: ssh, git clone -b dev,<br/>docker build, docker run"| ec2
 ```
 
-Two paths connect the services, and they carry different things:
+The course's CI/CD model has five stages: Source and Commit, Build, Test, Deploy, and
+Monitor and Feedback. hw8 automates the path from Source/Commit through Test: a push
+to `dev` and a pull request against `main` trigger the GitHub Actions job, which
+installs the pinned dependencies, lints with ruff, and runs the 37-test suite. Deploy
+is not automated. Getting the code onto the EC2 host, building the two images, and
+running the containers is the documented manual procedure below, carried out by a
+human at a terminal.
 
-- The **volume** is how predictions reach the dashboard. The API appends, the dashboard
-  reads. This is the data path.
-- The **network** carries only the dashboard's best-effort health check, drawn as a
-  dashed line. It drives the API status badge and proves the two containers resolve each
-  other by service name.
+This is continuous integration plus a documented manual deploy, not continuous
+deployment. The course defines continuous deployment as pushing every change that
+passes the pipeline straight to production "without any human intervention," and Part
+3 of this brief asks for a manual deployment guide on the same page, which is the
+opposite of that definition. Monitor and Feedback is the Streamlit dashboard carried
+over from hw7, reading the shared volume once both containers are running on the host.
 
 ## Files
 
 ```
-assignments/hw7/
-├── docker-compose.yml            two services, the shared volume, the shared network
+assignments/hw8/
+├── docker-compose.yml            local dev only: shared volume + network, two services
 ├── Makefile                      build · run · seed · evaluate · test · clean
 ├── evaluate.py                   scores the running API, prints a final accuracy
 ├── test.json                     instructor's test set, 174 rows (87 pos / 87 neg)
 ├── test_data.json                identical copy, so both names the brief uses resolve
 ├── pytest.ini                    warnings-as-errors across the whole suite
-├── requirements-dev.in           host-side test + eval deps (source)
-├── requirements-dev.txt          the same, compiled and hash-pinned
-├── hw7.postman_collection.json   7 requests, each asserting its own status
+├── pyproject.toml                ruff config: E, W, F, I, B, UP; line-length 100; py313
+├── requirements.in               root dependency source: both service stacks + pytest, httpx, ruff
+├── requirements.txt              the same, compiled and hash-pinned (what CI installs)
+├── week8_Assignment6CICDTesting.md / .pdf   the released brief
 ├── README.md                     this file
+├── docs/                         reserved for the dashboard screenshot, see below
 │
 ├── api/                          the FastAPI prediction service
 │   ├── main.py                   POST /predict (logs every call) · GET /health
 │   ├── Dockerfile                python:3.13-slim (digest-pinned), non-root, /logs
-│   ├── sentiment_model.pkl       the Assignment 1 model, unchanged
+│   ├── sentiment_model.pkl       the Assignment 1 model, byte-identical to hw1's
 │   ├── requirements.in           serving stack (source)
 │   ├── requirements.txt          the same, compiled and hash-pinned
 │   ├── conftest.py               puts the app dir on sys.path for tests
-│   └── tests/
-│       └── test_api.py           21 tests pinning the graded logging contract
+│   └── test_api.py               24 tests pinning the logging contract, 422/413/503
 │
 └── monitoring/                   the Streamlit monitoring dashboard
     ├── dashboard.py              alert banner, data drift, target drift, accuracy
@@ -135,256 +149,65 @@ assignments/hw7/
     ├── requirements.in           streamlit + pandas + matplotlib + requests (source)
     ├── requirements.txt          the same, compiled and hash-pinned
     ├── conftest.py               puts the app dir on sys.path for tests
-    └── tests/
-        └── test_reference_stats.py   7 tests pinning reference equivalence
+    ├── test_dashboard.py         6 tests: launch, alert, no-feedback, empty log, boot
+    └── test_reference_stats.py   7 tests pinning reference-artifact equivalence
 ```
 
-## Using the Makefile, step by step
+The `.github/workflows/ci.yml` that drives the pipeline lives at the repository root,
+not under `assignments/hw8/`, because GitHub reads workflows only from that path.
 
-Running the entire stack from a fresh clone, in order.
+## Local development
 
-**Step 0. Prerequisites.** Docker Desktop running, and Python 3.13 on the host if you
-plan to use `make evaluate` or `make test`.
+### Using make
 
 ```bash
-cd assignments/hw7
-docker --version        # any recent Docker with Compose v2
+cd assignments/hw8
+make build     # builds sentiment-monitor-api and sentiment-monitor-dashboard
+make run       # creates the volume + network, starts both containers detached
 ```
 
-**Step 1. Build both images.** One image per service, from the two separate Dockerfiles.
+`make build` completed clean on arm64 in 27.8 seconds, no `--platform` flag needed
+(the digest-pinned base resolves multi-arch correctly). `make run` reports both
+service URLs:
+
+```
+  API       http://localhost:8000/docs
+  Dashboard http://localhost:8501
+```
+
+Confirm both are up, run the test suite, then send some traffic:
 
 ```bash
-make build
+curl http://localhost:8000/health   # {"status":"ok"}
+make test                           # 37 passed
+make seed                           # five labeled predictions
+make evaluate                       # scores the API over the 174-record test set
 ```
 
-Builds `sentiment-monitor-api` from `api/Dockerfile` and `sentiment-monitor-dashboard`
-from `monitoring/Dockerfile`. Expect no warnings and no errors.
+`make test` and `make evaluate` need the host venv from the grader block above.
+`make evaluate` runs `evaluate.py`, whose real output for this task is in the "For the
+grader" section.
 
-**Step 2. Run the whole stack.** One command brings up both containers, the shared
-network, and the shared volume.
+Tear everything down before switching to the raw `docker` path below, since both
+paths use the same fixed container, volume, and network names and the second
+collides with the first if it is still running:
 
 ```bash
-make run
+make clean      # stops both containers, drops the volume, the network, both images
 ```
 
-This creates the `prediction-logs` named volume and the `sentiment-net` network, starts
-both containers detached, and prints the two URLs. It rebuilds first if anything changed,
-so you can skip step 1 and start here. Confirm both are up:
+### The raw docker equivalent
+
+For a grader who skips `make` and Compose. Free the fixed names first if the stack
+above is still up:
 
 ```bash
-docker compose ps          # api and dashboard both "Up"
-curl http://localhost:8000/health
-# {"status":"ok"}
+docker rm -f sentiment-monitor-api sentiment-monitor-dashboard 2>/dev/null || true
+docker volume rm prediction-logs 2>/dev/null || true
+docker network rm sentiment-net 2>/dev/null || true
 ```
 
-**Step 3. Send traffic.** Either drive it by hand with curl or Postman (see the next
-section), or use the shortcut:
-
-```bash
-make seed        # five labeled predictions, enough to populate every chart
-```
-
-**Step 4. Score the API.** Runs `evaluate.py` over the instructor's 174-record test set
-and prints a final accuracy. Needs `requests` on the host.
-
-```bash
-pip install -r requirements-dev.txt
-make evaluate
-```
-
-**Step 5. Open the dashboard.** <http://localhost:8501>. The three monitoring plots and
-the accuracy alert banner are populated by whatever traffic steps 3 and 4 produced. API
-docs are at <http://localhost:8000/docs>.
-
-**Step 6. Run the tests (optional).**
-
-```bash
-make test        # 28 passed
-```
-
-**Step 7. Tear everything down.** Stops both containers and removes the network and the
-volume, which wipes the logs.
-
-```bash
-make clean
-```
-
-Use `make down` instead if you want to stop the containers but keep the logged
-predictions for the next run.
-
-### Target reference
-
-| Command | What it does |
-|---|---|
-| `make build` | Builds `sentiment-monitor-api` and `sentiment-monitor-dashboard` from the two Dockerfiles. |
-| `make run` | Builds if needed, creates the `prediction-logs` volume and `sentiment-net` network, starts both containers detached, prints the two URLs. |
-| `make seed` | Sends five labeled predictions so the charts have data without running the full evaluation. |
-| `make evaluate` | Runs `evaluate.py` against `http://localhost:8000` over all 174 rows of the instructor's `test.json` and prints the final accuracy. |
-| `make test` | Runs all 28 tests (21 API + 7 reference). Needs `pip install -r requirements-dev.txt`. |
-| `make logs` | Follows both containers' logs. |
-| `make down` | Stops the containers, keeps the volume so logs persist. |
-| `make clean` | Stops containers, removes the volume **and** the network, drops both images. |
-
-`up` is kept as an alias for `run` so older references keep working.
-
-## Driving the API from curl
-
-`POST /predict` takes the review text and an optional ground-truth label:
-
-```bash
-# With feedback (drives the accuracy and precision panel)
-curl -X POST http://localhost:8000/predict \
-  -H 'Content-Type: application/json' \
-  -d '{"text": "One of the best films I have seen in years.", "true_sentiment": "positive"}'
-# {"timestamp":"2026-...","predicted_sentiment":"positive","true_sentiment":"positive","logged":true}
-
-# Without feedback (still logged, not counted in accuracy)
-curl -X POST http://localhost:8000/predict \
-  -H 'Content-Type: application/json' \
-  -d '{"text": "It was fine, nothing special."}'
-
-# Liveness
-curl http://localhost:8000/health
-# {"status":"ok"}
-```
-
-Each call appends one line to `/logs/prediction_logs.json`:
-
-```json
-{"timestamp":"2026-08-01T14:59:22.876856+00:00","request_text":"One of the best films I have seen in years.","predicted_sentiment":"positive","true_sentiment":"positive"}
-```
-
-Interactive docs are at <http://localhost:8000/docs>. A Postman collection covering all
-seven cases below ships as `hw7.postman_collection.json`; import it and choose Run
-Collection, and every request asserts its own expected status.
-
-### Validation behavior
-
-| Request | Response |
-|---|---|
-| Valid text, with or without `true_sentiment` | 200 |
-| `true_sentiment` in any case or with surrounding spaces | 200, normalized to lowercase |
-| Blank text, whitespace-only text, missing `text`, non-string `text` | 422 |
-| Unknown `true_sentiment` value | 422 |
-| Any extra field (`extra="forbid"`) | 422 |
-| Non-finite JSON float (`NaN`, `Infinity`) | 422 |
-| `text` longer than 20,000 characters | 422 |
-| Raw body larger than 1 MiB | 413 |
-| Model file missing or unreadable | 503 from `/predict`, `/health` stays 200 |
-
-Rejected requests never reach the log, so the dashboard only ever plots real traffic.
-
-## Using evaluate.py
-
-The script reads a labeled JSON file, sends each `text` to the running service, and
-prints a final accuracy score along with per-class precision.
-
-```bash
-pip install -r requirements-dev.txt   # only needs `requests`
-make run                              # the API must be up first
-make evaluate                         # or: python evaluate.py
-```
-
-Options:
-
-```bash
-python evaluate.py --api-url http://localhost:8000   # point at a different host
-python evaluate.py --test-data other_data.json       # use a different labeled file
-python evaluate.py --no-feedback                     # send text only, skip dashboard feedback
-python evaluate.py --timeout 60                      # per-request timeout in seconds
-```
-
-By default each request also carries its ground-truth label as `true_sentiment`, so an
-evaluation run doubles as feedback traffic and the dashboard's accuracy panel fills from
-it. The label never reaches the model: `/predict` classifies `text` alone and logs
-`true_sentiment` untouched, so there is no leakage into the prediction. Pass
-`--no-feedback` to send the text only.
-
-The script exits 0 on a clean run, 1 if any record failed to score, and 2 if the API is
-unreachable. A single failed request is reported and does not abort the run.
-
-### About the test file
-
-This ships the **instructor's `test.json`** verbatim: 174 records, 87 positive and 87
-negative, schema `[{"text": ..., "true_label": ...}]`.
-
-The brief names the file two different ways. The body says `test_data.json`; the link at
-the end of the PDF says `test.json`. Both names ship here with identical contents, and
-`evaluate.py` resolves `test.json` first and falls back to `test_data.json`, so a grader
-following either reference gets the same run with no arguments.
-
-To score a different labeled file, pass `--test-data <path>`. No code change is needed as
-long as it matches the schema above.
-
-Unlike a sample drawn from the training corpus, these records are the instructor's own
-held-out inputs, so 94.83% is a meaningful read rather than a smoke test.
-
-## What the dashboard shows
-
-- **Accuracy alert banner.** Rendered at the very top of the page, above every chart,
-  whenever live accuracy falls below 80%. Implemented with `st.error()` as the brief
-  requires, using a slot reserved before the charts so the banner appears at the top even
-  though accuracy is computed further down. When accuracy is at or above 80% the same
-  slot shows a green confirmation instead of staying blank.
-- **Data drift.** Overlaid density histograms of review length in words, training data vs
-  logged live requests, with the shared x-range clipped at the 99th percentile so a few
-  long reviews do not flatten the chart.
-- **Target drift.** Grouped bar chart of the predicted-sentiment mix in the logs against
-  the trained label balance (IMDB is 25,000 / 25,000).
-- **Accuracy, precision, and feedback.** Live accuracy, precision for the positive class,
-  macro precision, feedback coverage, a per-class precision/recall/accuracy table, and a
-  predicted-versus-true count table. All computed over the labeled subset only.
-
-Precision for a class the model never predicted is reported as `n/a`, not `0%`. An empty
-denominator makes precision undefined, and printing zero would claim the model got every
-such prediction wrong when it made none at all.
-
-## Drift-reference provenance
-
-The dashboard's drift reference is `monitoring/reference_stats.json` (11 KB), a
-precomputed length-count and sentiment-count map. The raw 63 MB `IMDB Dataset.csv` is
-**not** committed in this folder, because shipping 63 MB to carry two aggregates puts a
-permanent blob in git history for 300x more data than the charts read.
-
-The substitution is verifiable, not asserted:
-
-```bash
-# The artifact reproduces exactly from the real dataset.
-shasum -a 256 "../hw3/IMDB Dataset.csv"
-# dfc447764f82be365fa9c2beef4e8df89d3919e3da95f5088004797d79695aa2
-
-cd monitoring
-python reference_stats.py "../../hw3/IMDB Dataset.csv" /tmp/check.json
-python -c "import json; a=json.load(open('reference_stats.json')); b=json.load(open('/tmp/check.json')); print('identical:', a==b)"
-# identical: True
-```
-
-`reference_stats.json` records `reference_rows: 50000` and `sentiment_counts:
-{positive: 25000, negative: 25000}`. The seven tests in
-`monitoring/tests/test_reference_stats.py` pin that the reconstructed frame has the same
-length multiset and the same sentiment proportions as reading the CSV directly, so no
-chart moves. `imdb_sample.csv` (200 balanced rows, seed 4450) is the fallback used only
-if the artifact is absent. Nothing is fabricated.
-
-This reverses an earlier decision to commit the full CSV. The reversal is recorded in
-`../../COURSE_STATE.md`.
-
-## Running the tests
-
-```bash
-pip install -r requirements-dev.txt
-make test
-# 28 passed
-```
-
-`pytest.ini` treats warnings as errors, with one allowlisted third-party deprecation
-(starlette's TestClient httpx warning). The 21 API tests pin the graded logging contract
-field by field, the newline-delimited format, every 422 path, the 413 ceiling, and the
-503 degraded mode. The 7 monitoring tests pin the reference-artifact equivalence.
-
-## The manual Docker path (what Compose does, for hw8)
-
-hw8 runs these by hand on an EC2 host, so here is the equivalent without Compose:
+Then build and run by hand:
 
 ```bash
 docker network create sentiment-net
@@ -403,78 +226,279 @@ docker run -d --name sentiment-monitor-dashboard \
   sentiment-monitor-dashboard
 ```
 
-With raw `docker run` the service DNS name is the `--name`, so the dashboard points at
-`http://sentiment-monitor-api:8000`. Under Compose it is the service name, `http://api:8000`.
+With raw `docker run` the service DNS name is the `--name`, so the dashboard points
+at `http://sentiment-monitor-api:8000`. Under Compose or `make`, it is the service
+name, `http://api:8000`. Tear down the same way as the `make clean` step above.
 
-## Local dev without Docker
+## Continuous integration (GitHub Actions)
+
+The workflow lives at `.github/workflows/ci.yml` at the repository root, the only
+place GitHub reads workflows from. It triggers on every pull request opened or
+updated against `main`, with no path filter, so the check is visible on the graded
+pull request regardless of which files changed.
+
+One job, `lint and test`, runs on `ubuntu-latest` with a 15-minute timeout and reads
+the repository only (`permissions: contents: read`). Every step sets
+`working-directory: assignments/hw8`, so pytest's rootdir picks up hw8's `pytest.ini`
+and its `filterwarnings = error` gate. The five steps run in the brief's stated order:
+
+1. Check out the repository. `actions/checkout` pinned to the commit SHA behind tag
+   `v4.2.2`, `persist-credentials: false` so no step can push with the job token.
+2. Set up Python 3.13. `actions/setup-python` pinned to the commit SHA behind tag
+   `v5.3.0`.
+3. `pip install --require-hashes -r requirements.txt`.
+4. `ruff check .`.
+5. `pytest -q`.
+
+Both pinned SHAs were checked against their claimed tags with
+`git ls-remote --tags` before the workflow was written.
+
+Verified green on a throwaway pull request built from this exact commit history:
+[run 30729295834](https://github.com/rocklambros/MLOPS-Comp-4450-1/actions/runs/30729295834).
+Overall conclusion `success`, job wall time 42 seconds. Ruff: `All checks passed!`.
+Pytest: `37 passed in 5.34s`. The one Streamlit subprocess test that starts a real
+server, the predicted likely failure point on a Linux runner, passed without
+incident.
+
+## Manual deployment to EC2
+
+Written for a reader who has just downloaded a fresh key pair and has nothing else.
+Every host reference reads `<EC2_PUBLIC_IP>` literally. Substitute the instance's
+own public IP at each step.
+
+1. Launch the instance
+   - AMI: Ubuntu Server 22.04 LTS
+   - Instance type: t2.micro
+   - Key pair: create or select one, download the .pem
+   - Security group inbound rules:
+
+     | Type       | Port | Source        |
+     |------------|------|---------------|
+     | SSH        | 22   | My IP         |
+     | Custom TCP | 8000 | Anywhere-IPv4 |
+     | Custom TCP | 8501 | Anywhere-IPv4 |
+
+2. Protect the key. A freshly downloaded .pem is world-readable and SSH refuses it.
+   ```bash
+   chmod 400 <key>.pem
+   ```
+
+3. Connect.
+   ```bash
+   ssh -i <key>.pem ubuntu@<EC2_PUBLIC_IP>
+   ```
+
+4. Install Docker and Git.
+   ```bash
+   sudo apt-get update
+   sudo apt-get install -y docker.io git
+   sudo systemctl enable --now docker
+   ```
+
+5. Grant docker access, then reload the group. Group membership does not apply to the
+   current shell, so skipping this fails the first build with a socket permission
+   error.
+   ```bash
+   sudo usermod -aG docker ubuntu
+   newgrp docker
+   docker ps
+   ```
+
+6. Get the code onto the host. Pick ONE path, then set `APP_DIR` to match.
+
+   Path A, scp. No credential ever lands on the box. Run this on your laptop:
+   ```bash
+   scp -i <key>.pem -r assignments/hw8 ubuntu@<EC2_PUBLIC_IP>:/home/ubuntu/hw8
+   ```
+   Then on the instance:
+   ```bash
+   export APP_DIR=/home/ubuntu/hw8
+   ```
+
+   Path B, clone. This is what Part 3's "Clone your GitHub repository onto the EC2
+   instance" describes. `-b dev` is required: the pull request stays unmerged for
+   grading, so `main` carries no hw8 code. The repository is private, so this prompts
+   for a GitHub username and a personal access token as the password.
+   ```bash
+   git clone -b dev https://github.com/rocklambros/MLOPS-Comp-4450-1.git
+   export APP_DIR=/home/ubuntu/MLOPS-Comp-4450-1/assignments/hw8
+   ```
+   If you use Path B, revoke the token when finished. A token typed on a shared
+   sandbox host outlives the instance.
+
+7. Create the shared network. The brief mandates a volume and never mentions a
+   network, yet the dashboard resolves the API by container name, which the default
+   bridge does not provide. Without this the stack looks healthy and the API badge
+   reads unreachable.
+   ```bash
+   docker network create sentiment-net
+   ```
+
+8. Create the shared volume.
+   ```bash
+   docker volume create prediction-logs
+   ```
+
+9. Build both images.
+   ```bash
+   cd "$APP_DIR"
+   docker build -t sentiment-monitor-api ./api
+   docker builder prune -f
+   docker build -t sentiment-monitor-dashboard ./monitoring
+   ```
+
+10. Run both containers detached on the shared volume and network.
+    ```bash
+    docker run -d --name sentiment-monitor-api \
+      --network sentiment-net \
+      -p 8000:8000 \
+      -v prediction-logs:/logs \
+      --restart unless-stopped \
+      sentiment-monitor-api
+
+    docker run -d --name sentiment-monitor-dashboard \
+      --network sentiment-net \
+      -p 8501:8501 \
+      -v prediction-logs:/logs \
+      -e API_URL=http://sentiment-monitor-api:8000 \
+      --restart unless-stopped \
+      sentiment-monitor-dashboard
+    ```
+    `API_URL` is the CONTAINER name here. Compose uses the service name `api`, and
+    copying that value into this path breaks the dashboard's health badge.
+
+11. Seed the log so the dashboard has data. Without this the grader opens port 8501
+    and sees "No predictions logged yet" and nothing else.
+    ```bash
+    curl -fsS -X POST http://<EC2_PUBLIC_IP>:8000/predict \
+      -H 'Content-Type: application/json' \
+      -d '{"text": "An absolute masterpiece, I loved every minute of it.", "true_sentiment": "positive"}'
+    curl -fsS -X POST http://<EC2_PUBLIC_IP>:8000/predict \
+      -H 'Content-Type: application/json' \
+      -d '{"text": "A boring, painful waste of two hours.", "true_sentiment": "negative"}'
+    ```
+
+12. Verify. Check `/predict`, not only `/health`: a mis-copied model yields a
+    container that passes `docker ps` and `GET /health` while returning 503 on
+    `/predict`.
+    ```bash
+    docker ps
+    curl -fsS http://<EC2_PUBLIC_IP>:8000/health
+    curl -fsS -X POST http://<EC2_PUBLIC_IP>:8000/predict \
+      -H 'Content-Type: application/json' \
+      -d '{"text": "A boring, painful waste of two hours.", "true_sentiment": "negative"}'
+    ```
+    Expected: `{"status":"ok"}` from the second, and a 200 carrying
+    `predicted_sentiment` from the third. Then open `http://<EC2_PUBLIC_IP>:8501` and
+    confirm the charts render.
+
+    Optional fuller check, scoring the API over the 174-record labeled set:
+    ```bash
+    sudo apt-get install -y python3-pip && pip3 install requests
+    python3 evaluate.py --api-url http://<EC2_PUBLIC_IP>:8000
+    ```
+
+13. Tear down when finished.
+    ```bash
+    docker rm -f sentiment-monitor-api sentiment-monitor-dashboard
+    docker volume rm prediction-logs
+    docker network rm sentiment-net
+    ```
+    Then terminate the instance in the console. Leaving it running leaves an
+    unauthenticated service exposed to the internet.
+
+## Requirement-to-evidence map
+
+Every task in the brief, where it is implemented, and how to check it. No row claims
+more than its listed command proves.
+
+| # | Requirement (from the brief) | Where | How to verify |
+|---|---|---|---|
+| 1 | `POST /predict` tested with a positive and a negative example | `api/test_api.py:229`, `:241` | `pytest api/test_api.py -k classifies -v` |
+| 2 | `/predict` correctly handles missing or malformed data | `api/test_api.py:133` (parametrized 422s), `:162` (413), `:203` (503), `:252` | `pytest api/test_api.py -v` |
+| 3 | Dashboard test: launches without errors | `monitoring/test_dashboard.py:97` | `pytest monitoring/test_dashboard.py::test_dashboard_launches_without_errors -v`. Runs `AppTest`, which never binds a port. It proves the script executes without raising and renders a success banner, not that a real server socket opens. |
+| 3b | Dashboard test: the process actually boots and serves traffic | `monitoring/test_dashboard.py:184` | `pytest monitoring/test_dashboard.py::test_streamlit_server_boots_and_serves_health -v`. Starts a real Streamlit subprocess and polls `/_stcore/health`. Proves the server boots, not that the page rendered. |
+| 4 | Work done on a `dev` branch, `main` protected | this repository's `dev` branch, this commit | `git branch --show-current` |
+| 5 | `.github/workflows/` directory with a CI YAML file | `.github/workflows/ci.yml` (repo root) | `cat .github/workflows/ci.yml` |
+| 6 | Trigger: PR opened or updated against `main` | `ci.yml` `on: pull_request: branches: [main]` | `grep -A2 '^on:' ../../.github/workflows/ci.yml` |
+| 7 | Job runs on an Ubuntu runner | `ci.yml` `runs-on: ubuntu-latest` | the CI run link above, "Set up job" step |
+| 8 | Steps in order: checkout, set up Python, install deps, lint, test | `ci.yml` steps 1-5 | the CI run link above, per-step conclusions all `success` |
+| 9 | Launch a t2.micro EC2 instance running Ubuntu | ["Manual deployment to EC2", step 1](#manual-deployment-to-ec2) | follow step 1 on a fresh AWS account |
+| 10 | Security group: 22 from My IP, 8000 and 8501 from anywhere | step 1's table | `aws ec2 describe-security-groups` on the created group, or the console |
+| 11 | Connect over SSH | step 3 | `ssh -i <key>.pem ubuntu@<EC2_PUBLIC_IP>` succeeds |
+| 12 | Install Docker and Git on the instance | steps 4-5 | `docker --version && git --version` on the instance |
+| 13 | Clone the repository, create a shared volume, build both images, run both containers detached and connected to the volume | steps 6-10 | `docker ps` shows both containers `Up`, `docker volume inspect prediction-logs` shows both container names attached |
+| 14 | README describes the architecture: FastAPI, Streamlit, CI/CD pipeline, EC2 deployment | ["System architecture"](#system-architecture) | Mermaid diagram covers all four. The paragraph below it names the automated and manual halves |
+| 15 | README explains local build and run with Docker | ["Local development"](#local-development) | `make` path and raw `docker` path, teardown between |
+| 16 | README gives a very detailed manual deployment guide | ["Manual deployment to EC2"](#manual-deployment-to-ec2) | 13 numbered steps, key pair to teardown, copy-pasteable |
+
+## Deviations from the brief
+
+- **Monorepo, private, not a new public repository.** The brief says "create a new
+  repository for this assignment." Permission to keep using this monorepo instead,
+  and to keep it private, was granted verbally in class. The instructor
+  (`navido89`) has push access as a collaborator. This deviation was already in
+  effect for hw7 and every assignment before it.
+- **Python 3.13, not the course's stated 3.9.** Carried forward from hw2 onward.
+  pandas 3.0.3 and scikit-learn 1.9.0 need Python 3.10+, and the model was pickled
+  under 3.13. Rationale and the offer to re-pin live in `COURSE_STATE.md`.
+- **ruff, not flake8.** The brief names flake8 as an example ("a linter like flake8
+  or ruff"), so either satisfies the requirement. ruff is faster and covers pyflakes,
+  pycodestyle, import sorting, bugbear, and pyupgrade in one tool
+  (`pyproject.toml`).
+- **The workflow lives at the repository root**, not under `assignments/hw8/`.
+  GitHub Actions only discovers workflows in `.github/workflows/` at the repo root,
+  so there was no alternative that still triggers.
+- **CI, not CD.** The pipeline automates lint and test on every pull request. It does
+  not deploy anything automatically. Part 3's deployment is the manual procedure
+  above, matching what the brief itself asks for.
+- **GitHub Actions pinned to commit SHAs, not tags.** `actions/checkout` and
+  `actions/setup-python` are pinned to the commit behind their release tag rather
+  than the tag itself, so a moved tag cannot change what the job runs.
+- **Two HTTP status codes beyond the course's taught vocabulary: 413 and 503.** 413
+  covers an oversized request body. 503 covers a missing or corrupt model file at
+  `/predict`. Neither is required by this brief. Both are real degraded-mode paths
+  carried over from hw3 and hw7, and both are exercised by the "handles malformed
+  data" tests Part 1 asks for.
+
+## Limitations
+
+Neither service on the EC2 host is authenticated. This is the configuration the
+brief specifies: open both ports "from anywhere."
+
+- **Inbound.** Anyone who reaches port 8000 can call `/predict`. The only bounds are
+  the 1 MiB raw body cap and the 20,000-character text cap. There is no rate limit
+  and no API key.
+- **Outbound.** Port 8501 serves an unauthenticated read of the monitoring surface.
+  Scoped precisely: `monitoring/dashboard.py:326` renders exactly
+  `["timestamp", "predicted_sentiment", "true_sentiment", "length"]` in the recent-
+  predictions table. `request_text`, the actual review submitted, is **not** in that
+  list and is never rendered anywhere on the dashboard. What an anonymous visitor to
+  port 8501 can observe is prediction volume, request timing, the predicted and
+  true label mix, and per-request text length, not the review content itself.
+- **Plain HTTP.** Both ports serve unencrypted traffic. Week 3's networking material
+  calls HTTPS "essential for protecting data in transit," and this deployment
+  contradicts that guidance. It is the configuration the brief specifies, with no
+  TLS termination anywhere in the stack.
+- **Deliberately absent: S3, DynamoDB, an IAM instance profile.** The brief's Part 3
+  says only "Clone your GitHub repository onto the EC2 instance," and the model
+  ships inside the repository (`api/sentiment_model.pkl`), so there is nothing for
+  the instance to fetch from AWS storage. Adding an instance profile here would be
+  unused permissions on a host the brief already treats as disposable.
+
+## Running the tests
 
 ```bash
-# API
-cd api
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-LOG_PATH=../logs/prediction_logs.json uvicorn main:app --reload   # :8000
-
-# Dashboard (second shell)
-cd monitoring
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-LOG_PATH=../logs/prediction_logs.json API_URL=http://localhost:8000 \
-  streamlit run dashboard.py                                      # :8501
+python3 -m venv .venv && .venv/bin/pip install --require-hashes -r requirements.txt
+.venv/bin/python -m pytest -q
+# 37 passed
 ```
 
-`LOG_PATH` points both processes at the same file in place of the shared volume. Set
-`REFERENCE_DATA_PATH` to point the dashboard at a different reference file.
-
-## Design decisions
-
-- **Ports.** FastAPI on 8000, Streamlit on 8501, consistent with hw3 and lined up for the
-  hw8 EC2 security group.
-- **`true_sentiment` is optional, but always logged.** Real feedback is sporadic, so a
-  `/predict` call without it still succeeds and logs the field as `null`. The key is
-  present in every log line, never absent, so each entry carries it as the brief asks.
-  Accuracy and precision are computed over the labeled subset. Including the field
-  (Postman does) always works, so this is the more permissive choice against an automated
-  check.
-- **"Sentence length" = word count.** The brief says "sentence lengths" without a unit.
-  Word count is the standard text-length feature; the chart axis is labeled "words" so the
-  choice is explicit.
-- **Precision without a qualifier means the positive class.** That is the binary
-  convention. Macro precision and both per-class values are shown alongside it so nothing
-  is hidden behind the single headline number.
-- **Alert threshold is a named constant.** `ACCURACY_ALERT_THRESHOLD = 0.80` in
-  `dashboard.py`, so the banner, the caption, and the docs cannot drift apart. The
-  comparison is strict (`accuracy < 0.80`), matching "drops below 80%": exactly 80% does
-  not alert.
-- **Request bounds.** `text` is capped at 20,000 characters and the raw body at 1 MiB.
-  Beyond the resource argument, the cap protects the monitoring signal itself: without it
-  a single 400,000-word request moves the dashboard's "mean length, live" metric from 231
-  words to 40,005 while the histogram still looks normal, which is a wrong number next to
-  a plausible chart.
-- **Non-finite floats return 422.** FastAPI echoes the offending input into the 422 body
-  and Starlette renders JSON with `allow_nan=False`, so an uncoerced `NaN` turned the 422
-  into a 500. `_json_safe` coerces it. Carried over from Assignment 3.
-- **Volume permissions.** Both images run as a non-root user (uid 1000) and pre-create
-  `/logs` owned by that user. An empty named volume inherits the mount point's ownership
-  on first mount, so the non-root API can write. This is the one real Docker gotcha here.
-- **Supply chain.** Both runtime stacks and the dev stack are hash-pinned with
-  `uv pip compile --generate-hashes --universal`, and both base images are digest-pinned
-  to `python:3.13-slim@sha256:6771159c...` (resolved 2026-08-01). A tag is a moving
-  target; a rebuild months from now would otherwise pull a different base than the one
-  tested. Regenerate a lockfile from its `.in` file, never by hand.
-- **Names.** Images `sentiment-monitor-api` / `sentiment-monitor-dashboard`, volume
-  `prediction-logs`, network `sentiment-net`. The brief does not pin these, so they are
-  local choices, flagged here and kept consistent across the compose file, the Makefile,
-  and this README.
-- **Base image `python:3.13-slim`.** Same documented deviation as Assignments 2 and 3: the
-  pinned stack needs Python 3.10+ and the model was pickled under 3.13, so a 3.9 image
-  cannot install the dependencies or load the model.
-
-## Note to the instructor
-
-This runs on `python:3.13-slim` rather than the `python:3.9-slim` example in the brief,
-for the same reason as Assignments 2 and 3: the pinned stack (pandas 3.0.3,
-scikit-learn 1.9.0) requires Python 3.10 or newer, and the Assignment 1 model was
-serialized under Python 3.13, so a 3.9 image cannot install the dependencies or load the
-model. If a 3.9 base is a hard requirement, I will re-pin the stack to 3.9-compatible
-versions and retrain the model to match.
+`pytest.ini` treats warnings as errors, with one allowlisted third-party deprecation
+(starlette's TestClient httpx warning, inherited from hw7). 24 API tests pin the
+logging contract field by field, the newline-delimited format, every 422 path, the
+413 ceiling, and the 503 degraded mode. 6 dashboard tests cover the required launch
+check, the accuracy alert, the no-feedback and empty-log states, the pinned 80
+percent threshold, and a real subprocess boot. 7 reference-stats tests pin that the
+dashboard's drift reference reproduces exactly from the raw IMDB CSV, unchanged from
+hw7.
