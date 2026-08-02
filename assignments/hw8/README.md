@@ -129,7 +129,6 @@ assignments/hw8/
 ├── requirements.txt              the same, compiled and hash-pinned (what CI installs)
 ├── week8_Assignment6CICDTesting.md / .pdf   the released brief
 ├── README.md                     this file
-├── docs/                         reserved for the dashboard screenshot, see below
 │
 ├── api/                          the FastAPI prediction service
 │   ├── main.py                   POST /predict (logs every call) · GET /health
@@ -394,7 +393,10 @@ own public IP at each step.
 
     Optional fuller check, scoring the API over the 174-record labeled set:
     ```bash
-    sudo apt-get install -y python3-pip && pip3 install requests
+    sudo apt-get install -y python3-pip
+    # --break-system-packages is required on Ubuntu 24.04 (PEP 668 blocks a bare
+    # pip3 install into the system Python) and is a harmless no-op on 22.04.
+    pip3 install --break-system-packages requests
     python3 evaluate.py --api-url http://<EC2_PUBLIC_IP>:8000
     ```
 

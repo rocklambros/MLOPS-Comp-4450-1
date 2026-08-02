@@ -1,7 +1,10 @@
-"""Tests for the hw7 prediction service (Assignment 5).
+"""Tests for the hw8 prediction service (Assignment 6).
 
 Course:  COMP 4450 MLOps
 Owner:   Rock Lambros <rock@rockcyber.com>
+
+The request-contract tests below are carried forward from hw7 (Assignment 5) and
+extended here with the positive and negative label assertions Part 1 requires.
 
 The assignment grades one contract above all others: every call to POST /predict
 appends one JSON line to the shared log carrying timestamp, request_text,
