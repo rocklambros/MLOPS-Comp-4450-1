@@ -1,0 +1,12 @@
+# ruff configuration for hw8.
+# Course: COMP 4450 MLOps   Owner: Rock Lambros <rock@rockcyber.com>
+#
+# The rule set is pinned explicitly rather than left to ruff's defaults, because
+# defaults shift between releases and this linter gates a graded pull request.
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+# E/W pycodestyle, F pyflakes, I import sorting, B bugbear, UP pyupgrade.
+select = ["E", "W", "F", "I", "B", "UP"]

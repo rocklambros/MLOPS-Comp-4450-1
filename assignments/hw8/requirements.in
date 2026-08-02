@@ -1,0 +1,16 @@
+# Root dependency source for hw8. One compile, one lockfile, because CI step 3
+# says "Install all project dependencies from requirements.txt" (singular).
+#
+# Chains both service runtimes so the suite can import `main` (api) and
+# `reference_stats` plus `dashboard` (monitoring), then adds test and lint tooling.
+# httpx is required by fastapi.testclient.TestClient and is NOT in
+# api/requirements.in, so every API test would die at collection without it.
+#
+# Compile with:
+#   uv pip compile requirements.in --generate-hashes --universal \
+#     --python-version 3.13 -o requirements.txt
+-r api/requirements.in
+-r monitoring/requirements.in
+pytest==9.1.0
+httpx==0.28.1
+ruff==0.15.17

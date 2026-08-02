@@ -1,0 +1,19 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# Tests and the .in source of the lockfile are build-time-only; the image ships
+# main.py, the model, and the hash-pinned requirements.txt.
+tests/
+# The flat spec-literal test path Assignment 6 requires.
+test_api.py
+conftest.py
+requirements.in
+*.md
+.gitignore
+.dockerignore
+.env
+logs/
+# The full dataset never goes in the image; the API does not need it.
+IMDB Dataset.csv

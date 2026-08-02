@@ -287,3 +287,10 @@ wandb/
 # A5 deliverable (hw7): the API container needs the model committed so it builds from
 # a fresh clone, so re-include it despite the *.pkl rule above.
 !assignments/hw7/api/sentiment_model.pkl
+
+# hw8 ships the same two binaries hw7 does: the trained model the API loads at
+# import, and the small CSV fallback the monitoring Dockerfile COPYs by name.
+# Without these negations `git add` skips both silently and the grader's
+# `docker build` fails at COPY.
+!assignments/hw8/api/sentiment_model.pkl
+!assignments/hw8/monitoring/imdb_sample.csv
