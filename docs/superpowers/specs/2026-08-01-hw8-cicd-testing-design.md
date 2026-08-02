@@ -381,7 +381,7 @@ produces a container that passes `docker ps` and `GET /health` while returning 5
 
 | Deviation | Reason |
 |---|---|
-| Monorepo rather than a new repository, private rather than public | Verbal instructor grant, `navido89` has push access. Get it in writing and screenshot it into the README. |
+| Monorepo rather than a new repository, private rather than public | Granted verbally in class to the whole room when the question was posed. `navido89` has push access. Basis stated in the README. |
 | Python 3.13 rather than the course's 3.9 | `COURSE_STATE.md`: pandas 3.0.3 and scikit-learn 1.9.0 need 3.10+, and the model was pickled under 3.13 |
 | ruff rather than flake8 | Spec permits either. Only flake8 was taught. The repo already pins ruff |
 | Workflow at the repo root, not `assignments/hw8/.github/` | GitHub reads workflows only from the repository root |
@@ -444,16 +444,24 @@ These are graded and leave no artifact in the repository, so each needs its own 
 
 | Risk | Mitigation |
 |---|---|
-| Repo deviation costs points, and the hw7 brief penalized reusing prior repos | Get the grant in writing before submitting |
+| Repo deviation costs points, and the hw7 brief penalized reusing prior repos | Granted verbally in class, see section 15. State the deviation and its basis in the README |
 | Merging the PR before grading | §13 makes it an explicit deliverable with a check |
 | Label fixtures flip and redden the pipeline | Record the `predict_proba` margin, pick wide-margin sentences |
 | `filterwarnings = error` catches a new streamlit or pandas deprecation | Run the suite before opening the graded pull request, allowlist by category if needed |
-| Grade weight unresolved, brief says 17 and syllabus says 10 | Not resolvable from documents. Ask the instructor |
-| No AI-use policy found in the repo | Check the Canvas syllabus page directly |
+| Grade weight | Resolved: 17 is canonical, see section 15 |
+| Evidence integrity | No AI-use policy exists. The Honor Code fabrication clause still binds every claim to real command output |
 
-## 15. Open items requiring the instructor
+## 15. Instructor items, resolved 2026-08-01
 
-1. Written confirmation of the monorepo and private-visibility grant.
-2. Reconciliation of 17 points on the brief against 10 points per homework in the syllabus.
-3. Whether a Canvas-hosted AI-use policy exists that never reached the PDF extractions in this
-   repo. The course outline's own bullet says "Check Syllabus section in the canvas."
+1. **Monorepo and private visibility: granted.** The instructor answered the question verbally
+   in class when it was posed. The grant was given to the room rather than as a private
+   exception, which is stronger than a one-to-one message: the whole class heard the same
+   answer. No further confirmation is sought. The README states the deviation and its basis so
+   a grader reading the repository sees the reasoning without having to recall the exchange.
+2. **17 points is canonical.** The brief and the Canvas header agree. The syllabus's "10 each"
+   is the stale figure and needs no reconciliation.
+3. **No AI-use policy exists, and none is implied.** The instructor actively encourages AI use
+   on the stated reasoning that it reflects where professional practice is moving. The Honor
+   Code's fabrication clause still governs: every claim in the README carries real command
+   output, the CI status is a real run, and reported test counts are real. That constraint is
+   about truthfulness of evidence, not about tooling.
