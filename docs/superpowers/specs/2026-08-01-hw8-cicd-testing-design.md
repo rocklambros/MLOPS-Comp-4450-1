@@ -402,8 +402,14 @@ transit."
 
 The limitations section names both directions of that exposure. Inbound: anyone can post to
 `/predict`, bounded only by the 1 MiB body cap and the 20,000-character text cap carried from
-hw7. Outbound: port 8501 serves an unauthenticated read of every logged prediction, because
-`dashboard.py:328` renders the recent-requests table including `request_text`.
+hw7. Outbound: port 8501 serves an unauthenticated read of the monitoring surface. Scope it
+accurately rather than overstating it. `dashboard.py:328` renders
+`["timestamp", "predicted_sentiment", "true_sentiment", "length"]`, so the review text is not
+displayed. What leaks is prediction volume, timing, the label mix, and per-request length,
+which is enough to profile usage and not enough to recover a submitted review.
+
+An earlier draft of this spec claimed the table renders `request_text`. That was wrong, and the
+correction is recorded rather than dropped, for the same reason as the §7.3 correction.
 
 No changes to the model, the endpoints, or the log record shape. hw7's suite asserts exact-set
 equality on the four log keys, so adding an observability field is a breaking change.
