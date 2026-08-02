@@ -6,7 +6,7 @@
 # `requests` lives in a virtualenv:  PYTHON=.venv/bin/python make evaluate
 COMPOSE ?= docker compose
 API_URL ?= http://localhost:8000
-PYTHON  ?= python3
+PYTHON  ?= .venv/bin/python
 
 .PHONY: build run up down logs seed evaluate test clean
 
@@ -51,15 +51,15 @@ seed:
 	@curl -fsS -X POST $(API_URL)/predict -H 'Content-Type: application/json' \
 	  -d '{"text": "I expected more but it fell flat in the second half."}'; echo
 
-# Score the running API over the 50-row labeled test set and print a final accuracy.
+# Score the running API over the 174-record labeled test set and print a final accuracy.
 # Needs the `requests` library: pip install -r requirements-dev.txt
 evaluate:
 	$(PYTHON) evaluate.py --api-url $(API_URL)
 
-# Unit and API checks for both services. Install dev deps first:
-#   pip install -r requirements-dev.txt
+# Unit and API checks for both services. Install deps first:
+#   python3 -m venv .venv && .venv/bin/pip install --require-hashes -r requirements.txt
 test:
-	$(PYTHON) -m pytest api/tests monitoring/tests -q
+	$(PYTHON) -m pytest -q
 
 # Stop everything, remove the shared volume and the network (wipes the logs), and
 # drop both images. This is the spec's `clean`.
