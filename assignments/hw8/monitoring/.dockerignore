@@ -4,6 +4,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 tests/
+# The flat spec-literal test paths Assignment 6 requires.
+test_dashboard.py
+test_reference_stats.py
 conftest.py
 requirements.in
 # The 63 MB raw dataset is not shipped: reference_stats.json carries the same
