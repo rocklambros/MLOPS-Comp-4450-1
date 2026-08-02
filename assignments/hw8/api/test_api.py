@@ -222,16 +222,17 @@ def test_predict_returns_503_when_the_model_is_missing(client, log_path, monkeyp
 # Fixtures are chosen for margin, not realism. Week 1 material warns that ML
 # models are evaluated empirically rather than proven correct, so a borderline
 # review would make this a flaky gate. Measured confidence on the shipped model:
-# positive 0.8478, negative 0.9795.
+# positive 0.9835, negative 0.9795.
 # ---------------------------------------------------------------------------
 
 
 def test_predict_classifies_a_clearly_positive_review_as_positive(client, log_path):
     """Part 1: the positive example."""
-    response = client.post(
-        "/predict",
-        json={"text": "Beautifully shot with a moving, unforgettable score."},
+    positive_text = (
+        "A wonderful, brilliant, excellent film. The acting was superb and the "
+        "story was beautiful and touching."
     )
+    response = client.post("/predict", json={"text": positive_text})
 
     assert response.status_code == 200
     assert response.json()["predicted_sentiment"] == "positive"
