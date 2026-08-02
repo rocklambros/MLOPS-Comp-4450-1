@@ -6,6 +6,8 @@ __pycache__/
 # Tests and the .in source of the lockfile are build-time-only; the image ships
 # main.py, the model, and the hash-pinned requirements.txt.
 tests/
+# The flat spec-literal test path Assignment 6 requires.
+test_api.py
 conftest.py
 requirements.in
 *.md
