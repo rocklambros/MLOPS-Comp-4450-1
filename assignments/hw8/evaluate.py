@@ -65,10 +65,10 @@ def load_test_data(path: Path) -> list[dict]:
     """
     try:
         records = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        raise SystemExit(f"error: test data not found at {path}")
+    except FileNotFoundError as exc:
+        raise SystemExit(f"error: test data not found at {path}") from exc
     except json.JSONDecodeError as exc:
-        raise SystemExit(f"error: {path} is not valid JSON: {exc}")
+        raise SystemExit(f"error: {path} is not valid JSON: {exc}") from exc
 
     if not isinstance(records, list) or not records:
         raise SystemExit(f"error: {path} must be a non-empty JSON array")

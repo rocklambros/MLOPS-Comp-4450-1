@@ -23,10 +23,9 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
+import reference_stats
 import requests
 import streamlit as st
-
-import reference_stats
 from reference_stats import resolve_reference_path, text_length
 
 HERE = Path(__file__).resolve().parent

@@ -20,7 +20,7 @@ import math
 import os
 import threading
 import warnings
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import joblib
@@ -276,7 +276,7 @@ def predict(request: PredictRequest) -> PredictResponse:
 
     predicted = str(model.predict([request.text])[0])
     record = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "request_text": request.text,
         "predicted_sentiment": predicted,
         "true_sentiment": request.true_sentiment,
