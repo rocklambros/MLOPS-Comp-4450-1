@@ -450,7 +450,7 @@ These are graded and leave no artifact in the repository, so each needs its own 
 
 | Risk | Mitigation |
 |---|---|
-| Repo deviation costs points, and the hw7 brief penalized reusing prior repos | Granted verbally in class, see section 15. State the deviation and its basis in the README |
+| (removed) Repo choice is settled, not a risk. See section 15. |
 | Merging the PR before grading | §13 makes it an explicit deliverable with a check |
 | Label fixtures flip and redden the pipeline | Record the `predict_proba` margin, pick wide-margin sentences |
 | `filterwarnings = error` catches a new streamlit or pandas deprecation | Run the suite before opening the graded pull request, allowlist by category if needed |
