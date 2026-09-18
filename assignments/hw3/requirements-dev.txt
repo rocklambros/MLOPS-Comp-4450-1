@@ -14,9 +14,9 @@ annotated-types==0.7.0 \
     # via
     #   -r requirements.in
     #   pydantic
-anyio==4.14.0 \
-    --hash=sha256:b47c1f9ccf73e67021df785332508f99379c68fa7d0684e8e3492cb1d4b23f89 \
-    --hash=sha256:dd9b7a2a9799ed6552fde617b2c5df02b7fdd7d88392fc48101e51bae46164d9
+anyio==4.14.2 \
+    --hash=sha256:9f505dda5ac9f0c8309b5e8bd445a8c2bf7246f3ce950121e45ea15bc41d1494 \
+    --hash=sha256:cfa139f3ed1a23ee8f88a145ddb5ac7605b8bbfd8592baacd7ce3d8bb4313c7f
     # via
     #   -r requirements.in
     #   httpx
@@ -33,12 +33,6 @@ click==8.4.1 \
     # via
     #   -r requirements.in
     #   uvicorn
-colorama==0.4.6 ; sys_platform == 'win32' \
-    --hash=sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44 \
-    --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6
-    # via
-    #   click
-    #   pytest
 fastapi==0.137.1 \
     --hash=sha256:64f6983c59e45c4b9fdc44e57cb8035c2451ee91ea8e8ec042aca37de7cf6b69 \
     --hash=sha256:822360704230d9533d8d9475399613525968aa2f0b5bd2a3ccc9f18c88fd541c
